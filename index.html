@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f5f1e8" />
+  <title>Nagi Presence Client v0.1</title>
+  <style>
+    :root{--bg:#f5f1e8;--ink:#2f3437;--muted:#747b80;--panel:rgba(255,255,255,.72);--line:rgba(47,52,55,.12)}
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 50% 18%,#fffdf8 0,var(--bg) 48%,#ece6da 100%);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Hiragino Sans","Yu Gothic",sans-serif;min-height:100svh;display:grid;place-items:center}
+    .app{width:min(100%,860px);min-height:100svh;padding:max(18px,env(safe-area-inset-top)) 20px max(24px,env(safe-area-inset-bottom));display:grid;grid-template-rows:auto 1fr auto;gap:18px}
+    .top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .brand{font-weight:600;letter-spacing:.02em}.phase{font-size:12px;color:var(--muted)}
+    .stage{display:grid;place-items:center;align-content:center;gap:18px}
+    .portrait-wrap{position:relative;width:min(74vw,420px);aspect-ratio:1/1;border-radius:36px;overflow:hidden;background:#d7d1c5;box-shadow:0 22px 60px rgba(44,49,52,.12)}
+    .portrait{width:100%;height:100%;object-fit:cover;display:block;transition:opacity .22s ease, transform .22s ease;transform:scale(1.001)}
+    .portrait.fading{opacity:.3;transform:scale(1.008)}
+    .placeholder{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:28px;background:linear-gradient(145deg,#d8d1c4,#bfc8c2);color:#fff;font-size:14px;line-height:1.6}
+    .state{font-size:14px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+    .caption{min-height:2.8em;max-width:620px;text-align:center;font-size:17px;line-height:1.65}
+    .controls{background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(14px);border-radius:24px;padding:14px;display:grid;gap:12px}
+    .row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+    button{appearance:none;border:1px solid var(--line);background:rgba(255,255,255,.9);color:var(--ink);border-radius:16px;padding:13px 10px;font:inherit;font-size:14px;cursor:pointer}
+    button:active{transform:translateY(1px)}
+    button.active{background:#2f3437;color:white}
+    .demo{width:100%;font-weight:600}
+    .note{font-size:12px;color:var(--muted);text-align:center}
+    @media (max-width:520px){.app{padding-left:14px;padding-right:14px}.portrait-wrap{width:min(84vw,390px);border-radius:28px}.row{grid-template-columns:repeat(2,1fr)}.caption{font-size:16px}}
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="top">
+      <div>
+        <div class="brand">Nagi Presence Client</div>
+        <div class="phase">Phase 1 / Gate 1 visual PoC</div>
+      </div>
+      <div class="phase">v0.1</div>
+    </header>
+
+    <section class="stage">
+      <div class="portrait-wrap">
+        <img id="portrait" class="portrait" alt="Nagi state" hidden />
+        <div id="placeholder" class="placeholder">凪さん画像は未接続です。<br>assets/neutral.jpg などを配置すると、そのまま状態切替を検証できます。</div>
+      </div>
+      <div id="state" class="state">NEUTRAL</div>
+      <div id="caption" class="caption">待機中。ここではUIの存在感と状態遷移だけを検証します。</div>
+    </section>
+
+    <section class="controls">
+      <div class="row">
+        <button data-state="neutral" class="active">Neutral</button>
+        <button data-state="listening">Listening</button>
+        <button data-state="thinking">Thinking</button>
+        <button data-state="warm">Warm</button>
+      </div>
+      <button id="demo" class="demo">会話遷移デモを再生</button>
+      <div class="note">PASS条件：写真の切替ではなく「聞く → 考える → 返す」と感じられること。</div>
+    </section>
+  </main>
+
+  <script>
+    const states = {
+      neutral:{img:'assets/neutral.jpg',label:'NEUTRAL',caption:'待機中。自然にこちらを向いている状態。'},
+      listening:{img:'assets/listening.jpg',label:'LISTENING',caption:'話を聞いている状態。注意がこちらに向いている。'},
+      thinking:{img:'assets/thinking.jpg',label:'THINKING',caption:'返答を考えている状態。視線や間で思考を感じさせる。'},
+      warm:{img:'assets/warm.jpg',label:'WARM',caption:'会話の温度が少し上がった状態。Happyではなく、親密さの表現。'}
+    };
+
+    const portrait = document.getElementById('portrait');
+    const placeholder = document.getElementById('placeholder');
+    const stateEl = document.getElementById('state');
+    const captionEl = document.getElementById('caption');
+    const buttons = [...document.querySelectorAll('[data-state]')];
+
+    function applyState(name){
+      const s = states[name];
+      portrait.classList.add('fading');
+      setTimeout(()=>{
+        portrait.src = s.img + '?v=' + Date.now();
+        stateEl.textContent = s.label;
+        captionEl.textContent = s.caption;
+        buttons.forEach(b=>b.classList.toggle('active', b.dataset.state===name));
+      },90);
+    }
+
+    portrait.onload = ()=>{placeholder.hidden=true;portrait.hidden=false;requestAnimationFrame(()=>portrait.classList.remove('fading'));};
+    portrait.onerror = ()=>{portrait.hidden=true;placeholder.hidden=false;portrait.classList.remove('fading');};
+
+    buttons.forEach(b=>b.addEventListener('click',()=>applyState(b.dataset.state)));
+
+    document.getElementById('demo').addEventListener('click',async()=>{
+      const seq=[['neutral',900],['listening',1700],['thinking',1300],['neutral',1500],['warm',1300],['neutral',700]];
+      document.getElementById('demo').disabled=true;
+      for(const [name,ms] of seq){applyState(name);await new Promise(r=>setTimeout(r,ms));}
+      document.getElementById('demo').disabled=false;
+    });
+
+    applyState('neutral');
+  </script>
+</body>
+</html>
