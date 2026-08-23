@@ -4,16 +4,19 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#f5f1e8" />
-  <title>Nagi Presence Client v0.3</title>
+  <title>Nagi Presence Client v0.4</title>
   <style>
     :root{--bg:#f5f1e8;--ink:#2f3437;--muted:#747b80;--panel:rgba(255,255,255,.72);--line:rgba(47,52,55,.12)}
     *{box-sizing:border-box}
     body{margin:0;background:radial-gradient(circle at 50% 18%,#fffdf8 0,var(--bg) 48%,#ece6da 100%);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Hiragino Sans","Yu Gothic",sans-serif;min-height:100svh;display:grid;place-items:center}
     .app{width:min(100%,860px);min-height:100svh;padding:max(18px,env(safe-area-inset-top)) 20px max(24px,env(safe-area-inset-bottom));display:grid;grid-template-rows:auto 1fr auto;gap:18px}
     .top{display:flex;align-items:center;justify-content:space-between;gap:12px}.brand{font-weight:600;letter-spacing:.02em}.phase{font-size:12px;color:var(--muted)}
-    .stage{display:grid;place-items:center;align-content:center;gap:18px}.portrait-wrap{position:relative;width:min(74vw,420px);aspect-ratio:1/1;border-radius:36px;overflow:hidden;background:#d7d1c5;box-shadow:0 22px 60px rgba(44,49,52,.12)}
-    .portrait{width:100%;height:100%;object-fit:cover;display:block;transition:opacity .22s ease,transform .22s ease;transform:scale(1.001)}.portrait.fading{opacity:.3;transform:scale(1.008)}
-    .placeholder{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:28px;background:linear-gradient(145deg,#d8d1c4,#bfc8c2);color:#fff;font-size:14px;line-height:1.6}
+    .stage{display:grid;place-items:center;align-content:center;gap:18px}
+    .portrait-wrap{position:relative;width:min(74vw,420px);aspect-ratio:1/1;border-radius:36px;overflow:hidden;background:#d7d1c5;box-shadow:0 22px 60px rgba(44,49,52,.12)}
+    .portrait{position:absolute;inset:0;z-index:2;width:100%;height:100%;object-fit:cover;display:block;transition:opacity .22s ease,transform .22s ease;transform:scale(1.001)}
+    .portrait.fading{opacity:.3;transform:scale(1.008)}
+    .placeholder{position:absolute;inset:0;z-index:1;display:grid;place-items:center;text-align:center;padding:28px;background:linear-gradient(145deg,#d8d1c4,#bfc8c2);color:#fff;font-size:14px;line-height:1.6}
+    .placeholder[hidden]{display:none!important}
     .state{font-size:14px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}.caption{min-height:2.8em;max-width:620px;text-align:center;font-size:17px;line-height:1.65}
     .diag{font-size:11px;color:var(--muted);text-align:center;max-width:680px;word-break:break-all;min-height:1.4em}
     .controls{background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(14px);border-radius:24px;padding:14px;display:grid;gap:12px}.row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
@@ -23,7 +26,7 @@
 </head>
 <body>
 <main class="app">
-<header class="top"><div><div class="brand">Nagi Presence Client</div><div class="phase">Phase 1 / Gate 1 visual PoC</div></div><div class="phase">v0.3</div></header>
+<header class="top"><div><div class="brand">Nagi Presence Client</div><div class="phase">Phase 1 / Gate 1 visual PoC</div></div><div class="phase">v0.4</div></header>
 <section class="stage">
   <div class="portrait-wrap"><img id="portrait" class="portrait" alt="Nagi state"><div id="placeholder" class="placeholder">凪さん画像を読み込み中です。</div></div>
   <div id="state" class="state">NEUTRAL</div>
@@ -34,31 +37,10 @@
 </main>
 <script>
 const BASE='https://araihiroaki0317-eng.github.io/nagi-presence-poc/assets/';
-const states={
- neutral:{img:BASE+'neutral.jpg',label:'NEUTRAL',caption:'待機中。自然にこちらを向いている状態。'},
- listening:{img:BASE+'listening.jpg',label:'LISTENING',caption:'話を聞いている状態。注意がこちらに向いている。'},
- thinking:{img:BASE+'thinking.jpg',label:'THINKING',caption:'返答を考えている状態。視線や間で思考を感じさせる。'},
- warm:{img:BASE+'warm.jpg',label:'WARM',caption:'会話の温度が少し上がった状態。Happyではなく、親密さの表現。'}
-};
-const portrait=document.getElementById('portrait');
-const placeholder=document.getElementById('placeholder');
-const stateEl=document.getElementById('state');
-const captionEl=document.getElementById('caption');
-const diag=document.getElementById('diag');
-const buttons=[...document.querySelectorAll('[data-state]')];
+const states={neutral:{img:BASE+'neutral.jpg',label:'NEUTRAL',caption:'待機中。自然にこちらを向いている状態。'},listening:{img:BASE+'listening.jpg',label:'LISTENING',caption:'話を聞いている状態。注意がこちらに向いている。'},thinking:{img:BASE+'thinking.jpg',label:'THINKING',caption:'返答を考えている状態。視線や間で思考を感じさせる。'},warm:{img:BASE+'warm.jpg',label:'WARM',caption:'会話の温度が少し上がった状態。Happyではなく、親密さの表現。'}};
+const portrait=document.getElementById('portrait'),placeholder=document.getElementById('placeholder'),stateEl=document.getElementById('state'),captionEl=document.getElementById('caption'),diag=document.getElementById('diag'),buttons=[...document.querySelectorAll('[data-state]')];
 let loadSeq=0;
-function applyState(name){
-  const s=states[name],seq=++loadSeq;
-  portrait.classList.add('fading');
-  stateEl.textContent=s.label;captionEl.textContent=s.caption;
-  buttons.forEach(b=>b.classList.toggle('active',b.dataset.state===name));
-  placeholder.hidden=false;placeholder.textContent='凪さん画像を読み込み中です。';
-  diag.textContent='loading: '+s.img;
-  const pre=new Image();
-  pre.onload=()=>{if(seq!==loadSeq)return;portrait.onload=()=>{placeholder.hidden=true;portrait.classList.remove('fading');diag.textContent='loaded: '+s.img+' ['+portrait.naturalWidth+'×'+portrait.naturalHeight+']';};portrait.onerror=()=>{placeholder.hidden=false;placeholder.textContent='表示処理で失敗しました。';diag.textContent='render error: '+s.img;};portrait.src=s.img+'?poc=3';};
-  pre.onerror=()=>{if(seq!==loadSeq)return;placeholder.hidden=false;placeholder.textContent='画像URLの読み込みに失敗しました。';portrait.classList.remove('fading');diag.textContent='preload error: '+s.img;};
-  pre.src=s.img+'?poc=3';
-}
+function applyState(name){const s=states[name],seq=++loadSeq;portrait.classList.add('fading');stateEl.textContent=s.label;captionEl.textContent=s.caption;buttons.forEach(b=>b.classList.toggle('active',b.dataset.state===name));placeholder.hidden=false;placeholder.textContent='凪さん画像を読み込み中です。';diag.textContent='loading: '+s.img;const pre=new Image();pre.onload=()=>{if(seq!==loadSeq)return;portrait.onload=()=>{placeholder.hidden=true;portrait.classList.remove('fading');diag.textContent='loaded: '+s.img+' ['+portrait.naturalWidth+'×'+portrait.naturalHeight+']';};portrait.onerror=()=>{placeholder.hidden=false;placeholder.textContent='表示処理で失敗しました。';diag.textContent='render error: '+s.img;};portrait.src=s.img+'?poc=4';};pre.onerror=()=>{if(seq!==loadSeq)return;placeholder.hidden=false;placeholder.textContent='画像URLの読み込みに失敗しました。';portrait.classList.remove('fading');diag.textContent='preload error: '+s.img;};pre.src=s.img+'?poc=4';}
 buttons.forEach(b=>b.addEventListener('click',()=>applyState(b.dataset.state)));
 document.getElementById('demo').addEventListener('click',async()=>{const seq=[['neutral',900],['listening',1700],['thinking',1300],['neutral',1500],['warm',1300],['neutral',700]];const btn=document.getElementById('demo');btn.disabled=true;for(const[name,ms]of seq){applyState(name);await new Promise(r=>setTimeout(r,ms))}btn.disabled=false});
 applyState('neutral');
