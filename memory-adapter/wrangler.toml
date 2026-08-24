@@ -1,0 +1,10 @@
+name = "nagi-memory-adapter"
+main = "worker.js"
+compatibility_date = "2026-08-24"
+
+[vars]
+NAGI_ENV = "poc"
+
+# Secret is intentionally NOT stored in GitHub.
+# Set with Cloudflare secret management after deploy:
+#   MEM0_API_KEY
