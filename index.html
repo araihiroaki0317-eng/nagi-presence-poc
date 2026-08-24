@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f5f1e8">
-<title>Nagi Presence Client v0.9</title>
+<title>Nagi Presence Client v0.9.1</title>
 <style>
 :root{--bg:#f5f1e8;--ink:#2f3437;--muted:#747b80;--panel:rgba(255,255,255,.76);--line:rgba(47,52,55,.12);--ok:#345b46;--err:#9a3e36}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 50% 18%,#fffdf8 0,var(--bg) 48%,#ece6da 100%);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Hiragino Sans","Yu Gothic",sans-serif;min-height:100svh;display:grid;place-items:center}.app{width:min(100%,860px);min-height:100svh;padding:max(18px,env(safe-area-inset-top)) 18px max(24px,env(safe-area-inset-bottom));display:grid;grid-template-rows:auto 1fr auto;gap:18px}.top{display:flex;align-items:center;justify-content:space-between;gap:12px}.brand{font-weight:650;letter-spacing:.02em}.sub,.ver,.status,.hint{font-size:12px;color:var(--muted)}.stage{display:grid;place-items:center;align-content:center;gap:14px;text-align:center}.portrait-wrap{position:relative;width:min(74vw,420px);aspect-ratio:1;border-radius:36px;overflow:hidden;background:#d7d1c5;box-shadow:0 22px 60px rgba(44,49,52,.12)}.portrait{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;transition:opacity .24s ease,transform .24s ease;transform:scale(1.001)}.portrait.fading{opacity:.34;transform:scale(1.008)}.placeholder{position:absolute;inset:0;display:grid;place-items:center;padding:28px;background:linear-gradient(145deg,#d8d1c4,#bfc8c2);color:white;font-size:14px}.placeholder[hidden]{display:none!important}.state{font-size:13px;color:var(--muted);letter-spacing:.12em}.caption{min-height:2.7em;max-width:620px;font-size:17px;line-height:1.6}.status.live{color:var(--ok)}.status.error{color:var(--err)}.panel{background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(14px);border-radius:24px;padding:14px;display:grid;gap:12px}.buttons{display:grid;grid-template-columns:1fr 1fr;gap:10px}button{appearance:none;border:1px solid var(--line);background:rgba(255,255,255,.94);color:var(--ink);border-radius:16px;padding:14px 12px;font:inherit;font-weight:600}button:disabled{opacity:.45}.debug{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;line-height:1.45;color:var(--muted);white-space:pre-wrap;word-break:break-word;max-height:96px;overflow:auto;border-top:1px solid var(--line);padding-top:9px}.hint{text-align:center;line-height:1.55}@media(max-width:520px){.app{padding-left:14px;padding-right:14px}.portrait-wrap{width:min(84vw,390px);border-radius:28px}.caption{font-size:16px}}
 </style>
 </head>
 <body>
 <main class="app">
-<header class="top"><div><div class="brand">Nagi Presence Client</div><div class="sub">Phase 1 / Voice × Presence Integration</div></div><div class="ver">v0.9</div></header>
+<header class="top"><div><div class="brand">Nagi Presence Client</div><div class="sub">Phase 1 / Voice × Presence Integration</div></div><div class="ver">v0.9.1</div></header>
 <section class="stage">
   <div class="portrait-wrap"><img id="portrait" class="portrait" alt="凪さん"><div id="placeholder" class="placeholder">凪さんを読み込み中です。</div></div>
   <div id="state" class="state">NEUTRAL</div>
@@ -26,102 +26,27 @@
 </main>
 <script type="module">
 import { Conversation } from 'https://esm.sh/@elevenlabs/client@latest?bundle';
-
 const AGENT_ID='agent_8501m0nvtj12ea5vnc21ck26v9sp';
 const BASE='./assets/';
 const states={
   neutral:{img:BASE+'neutral.jpg',label:'NEUTRAL',caption:'話したくなったら、会話を始めてください。'},
   listening:{img:BASE+'listening.jpg',label:'LISTENING',caption:'聞いています。'},
   thinking:{img:BASE+'thinking.jpg',label:'THINKING',caption:'少し考えています。'},
-  warm:{img:BASE+'warm.jpg',label:'SPEAKING',caption:'凪さんが話しています。'}
+  speaking:{img:BASE+'neutral.jpg',label:'SPEAKING',caption:'凪さんが話しています。'},
+  warm:{img:BASE+'warm.jpg',label:'WARM',caption:'会話の余韻。'}
 };
-
-const portrait=document.getElementById('portrait');
-const placeholder=document.getElementById('placeholder');
-const stateEl=document.getElementById('state');
-const captionEl=document.getElementById('caption');
-const statusEl=document.getElementById('status');
-const debugEl=document.getElementById('debug');
-const startBtn=document.getElementById('start');
-const stopBtn=document.getElementById('stop');
-let conversation=null;
-let loadSeq=0;
-let lastMode='';
-let ending=false;
-
+const portrait=document.getElementById('portrait'),placeholder=document.getElementById('placeholder'),stateEl=document.getElementById('state'),captionEl=document.getElementById('caption'),statusEl=document.getElementById('status'),debugEl=document.getElementById('debug'),startBtn=document.getElementById('start'),stopBtn=document.getElementById('stop');
+let conversation=null,loadSeq=0,lastMode='',ending=false;
 const safe=v=>{try{return typeof v==='string'?v:JSON.stringify(v)}catch{return String(v)}};
 const stamp=()=>new Date().toLocaleTimeString('ja-JP',{hour12:false});
 function debug(type,data=''){const line=`${stamp()} ${type}${data!==''?' '+safe(data):''}`;debugEl.textContent=(debugEl.textContent==='ready'?'':debugEl.textContent+'\n')+line;debugEl.scrollTop=debugEl.scrollHeight;}
 function setStatus(text,kind=''){statusEl.textContent=text;statusEl.className='status'+(kind?' '+kind:'');}
-function renderState(name,reason=''){
-  const s=states[name]||states.neutral;
-  const seq=++loadSeq;
-  stateEl.textContent=s.label;
-  captionEl.textContent=s.caption;
-  portrait.classList.add('fading');
-  const pre=new Image();
-  pre.onload=()=>{if(seq!==loadSeq)return;portrait.onload=()=>{placeholder.hidden=true;portrait.classList.remove('fading');};portrait.src=s.img+'?v=09';};
-  pre.onerror=()=>{if(seq!==loadSeq)return;placeholder.hidden=false;placeholder.textContent='画像の読み込みに失敗しました。';portrait.classList.remove('fading');};
-  pre.src=s.img+'?v=09';
-  if(reason)debug('STATE',name+' / '+reason);
-}
-function isUserMessage(m){
-  const x=m||{};
-  const values=[x.source,x.role,x.type,x.message?.source,x.message?.role,x.message?.type].filter(Boolean).map(v=>String(v).toLowerCase());
-  return values.some(v=>v.includes('user'));
-}
-function reset(reason=''){
-  conversation=null;ending=false;lastMode='';startBtn.disabled=false;stopBtn.disabled=true;setStatus('voice: disconnected');renderState('neutral',reason||'reset');
-}
-
-async function start(){
-  if(conversation)return;
-  debugEl.textContent='';
-  startBtn.disabled=true;
-  setStatus('voice: requesting microphone…');
-  debug('START','webrtc');
-  try{
-    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-    debug('MIC','granted');
-    stream.getTracks().forEach(t=>t.stop());
-    setStatus('voice: connecting…');
-    conversation=await Conversation.startSession({
-      agentId:AGENT_ID,
-      connectionType:'webrtc',
-      onConnect:()=>{debug('CONNECT');setStatus('voice: connected','live');stopBtn.disabled=false;renderState('listening','connected');},
-      onDisconnect:(details)=>{debug('DISCONNECT',details);if(!ending)reset('onDisconnect');},
-      onStatusChange:(event)=>{debug('STATUS',event);const st=event?.status||event;setStatus('voice: '+String(st),String(st)==='connected'?'live':'');},
-      onModeChange:(event)=>{
-        debug('MODE',event);
-        const mode=String(event?.mode||event||'').toLowerCase();
-        lastMode=mode;
-        if(mode==='speaking')renderState('warm','agent speaking');
-        else if(mode==='listening')renderState('listening','agent listening');
-      },
-      onMessage:(message)=>{
-        debug('MESSAGE',safe(message).slice(0,240));
-        if(lastMode!=='speaking'&&isUserMessage(message))renderState('thinking','user transcript received');
-      },
-      onError:(error)=>{debug('ERROR',error);setStatus('voice: error','error');}
-    });
-    stopBtn.disabled=false;
-    try{debug('SESSION_ID',conversation.getId())}catch{}
-  }catch(error){debug('START_FAILED',error?.message||error);setStatus('voice: start failed','error');reset('start failed');}
-}
-
-async function stop(){
-  const c=conversation;if(!c)return;
-  ending=true;stopBtn.disabled=true;setStatus('voice: disconnecting…');debug('STOP','button tapped');
-  try{await c.endSession();debug('END_SESSION','resolved');}
-  catch(error){debug('END_ERROR',error?.message||error);}
-  finally{reset('manual end');}
-}
-
-startBtn.onclick=start;
-stopBtn.onclick=stop;
-window.addEventListener('error',e=>debug('WINDOW_ERROR',e.message));
-window.addEventListener('unhandledrejection',e=>debug('PROMISE_REJECTION',e.reason));
-renderState('neutral','initial');
+function renderState(name,reason=''){const s=states[name]||states.neutral,seq=++loadSeq;stateEl.textContent=s.label;captionEl.textContent=s.caption;portrait.classList.add('fading');const pre=new Image();pre.onload=()=>{if(seq!==loadSeq)return;portrait.onload=()=>{placeholder.hidden=true;portrait.classList.remove('fading');};portrait.src=s.img+'?v=091';};pre.onerror=()=>{if(seq!==loadSeq)return;placeholder.hidden=false;placeholder.textContent='画像の読み込みに失敗しました。';portrait.classList.remove('fading');};pre.src=s.img+'?v=091';if(reason)debug('STATE',name+' / '+reason);}
+function isUserMessage(m){const x=m||{};const values=[x.source,x.role,x.type,x.message?.source,x.message?.role,x.message?.type].filter(Boolean).map(v=>String(v).toLowerCase());return values.some(v=>v.includes('user'));}
+function reset(reason=''){conversation=null;ending=false;lastMode='';startBtn.disabled=false;stopBtn.disabled=true;setStatus('voice: disconnected');renderState('neutral',reason||'reset');}
+async function start(){if(conversation)return;debugEl.textContent='';startBtn.disabled=true;setStatus('voice: requesting microphone…');debug('START','webrtc');try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});debug('MIC','granted');stream.getTracks().forEach(t=>t.stop());setStatus('voice: connecting…');conversation=await Conversation.startSession({agentId:AGENT_ID,connectionType:'webrtc',onConnect:()=>{debug('CONNECT');setStatus('voice: connected','live');stopBtn.disabled=false;renderState('listening','connected');},onDisconnect:(details)=>{debug('DISCONNECT',details);if(!ending)reset('onDisconnect');},onStatusChange:(event)=>{debug('STATUS',event);const st=event?.status||event;setStatus('voice: '+String(st),String(st)==='connected'?'live':'');},onModeChange:(event)=>{debug('MODE',event);const mode=String(event?.mode||event||'').toLowerCase();lastMode=mode;if(mode==='speaking')renderState('speaking','agent speaking');else if(mode==='listening')renderState('listening','agent listening');},onMessage:(message)=>{debug('MESSAGE',safe(message).slice(0,240));if(lastMode!=='speaking'&&isUserMessage(message))renderState('thinking','user transcript received');},onError:(error)=>{debug('ERROR',error);setStatus('voice: error','error');}});stopBtn.disabled=false;try{debug('SESSION_ID',conversation.getId())}catch{}}catch(error){debug('START_FAILED',error?.message||error);setStatus('voice: start failed','error');reset('start failed');}}
+async function stop(){const c=conversation;if(!c)return;ending=true;stopBtn.disabled=true;setStatus('voice: disconnecting…');debug('STOP','button tapped');try{await c.endSession();debug('END_SESSION','resolved');}catch(error){debug('END_ERROR',error?.message||error);}finally{reset('manual end');}}
+startBtn.onclick=start;stopBtn.onclick=stop;window.addEventListener('error',e=>debug('WINDOW_ERROR',e.message));window.addEventListener('unhandledrejection',e=>debug('PROMISE_REJECTION',e.reason));renderState('neutral','initial');
 </script>
 </body>
 </html>
