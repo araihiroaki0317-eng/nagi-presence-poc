@@ -1,23 +1,56 @@
 <!doctype html>
 <html lang="ja">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f5f1e8"><title>Nagi Presence Client v0.6</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f5f1e8">
+<title>Nagi Voice Diagnostic v0.7</title>
 <style>
-:root{--bg:#f5f1e8;--ink:#2f3437;--muted:#747b80;--panel:rgba(255,255,255,.72);--line:rgba(47,52,55,.12);--ok:#345b46}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 50% 18%,#fffdf8 0,var(--bg) 48%,#ece6da 100%);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif;min-height:100svh;display:grid;place-items:center}.app{width:min(100%,860px);min-height:100svh;padding:max(18px,env(safe-area-inset-top)) 20px max(24px,env(safe-area-inset-bottom));display:grid;grid-template-rows:auto 1fr auto;gap:16px}.top{display:flex;justify-content:space-between}.brand{font-weight:600}.phase,.status,.diag,.log{font-size:12px;color:var(--muted)}.stage{display:grid;place-items:center;align-content:center;gap:14px}.portrait-wrap{position:relative;width:min(74vw,420px);aspect-ratio:1;border-radius:36px;overflow:hidden;background:#d7d1c5;box-shadow:0 22px 60px rgba(44,49,52,.12)}.portrait{position:absolute;inset:0;z-index:2;width:100%;height:100%;object-fit:cover;transition:opacity .2s ease}.portrait.fading{opacity:.4}.placeholder{position:absolute;inset:0;z-index:1;display:grid;place-items:center;color:#fff;background:#c8c8bf}.placeholder[hidden]{display:none!important}.state{font-size:14px;color:var(--muted);letter-spacing:.08em}.caption{text-align:center;font-size:17px}.status.live{color:var(--ok)}.status.error{color:#9a3e36}.diag{text-align:center;word-break:break-all}.controls{background:var(--panel);border:1px solid var(--line);border-radius:24px;padding:14px;display:grid;gap:10px}.voice-row,.state-row{display:grid;gap:10px}.voice-row{grid-template-columns:1fr 1fr}.state-row{grid-template-columns:repeat(4,1fr)}button{border:1px solid var(--line);background:rgba(255,255,255,.9);color:var(--ink);border-radius:16px;padding:13px 10px;font:inherit}button:disabled{opacity:.45}button.active{background:#2f3437;color:#fff}.primary{font-weight:600}.log{background:rgba(255,255,255,.55);border:1px solid var(--line);border-radius:14px;padding:10px;max-height:150px;overflow:auto;white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.45}.note{text-align:center;font-size:11px;color:var(--muted)}@media(max-width:520px){.app{padding-left:14px;padding-right:14px}.portrait-wrap{width:min(84vw,390px)}.state-row{grid-template-columns:repeat(2,1fr)}}
-</style></head><body><main class="app">
-<header class="top"><div><div class="brand">Nagi Presence Client</div><div class="phase">Phase 1 / Gate 2 Voice × Presence</div></div><div class="phase">v0.6</div></header>
-<section class="stage"><div class="portrait-wrap"><img id="portrait" class="portrait" alt="Nagi state"><div id="placeholder" class="placeholder">凪さん画像を読み込み中です。</div></div><div id="state" class="state">NEUTRAL</div><div id="caption" class="caption">待機中。</div><div id="status" class="status">voice: disconnected</div><div id="diag" class="diag"></div></section>
-<section class="controls"><div class="voice-row"><button id="start" class="primary">🎙 会話を開始</button><button id="stop" disabled>会話を終了</button></div><div class="state-row"><button data-state="neutral" class="active">Neutral</button><button data-state="listening">Listening</button><button data-state="thinking">Thinking</button><button data-state="warm">Warm</button></div><div id="log" class="log">diagnostic log ready</div><div class="note">v0.6 diagnostic build：status / mode / message / error / disconnect を時系列表示します。</div></section>
-</main><script type="module">
-import { Conversation } from 'https://esm.sh/@elevenlabs/client@1.7.1?bundle';
-const AGENT_ID='agent_8501m0nvtj12ea5vnc21ck26v9sp',BASE='https://araihiroaki0317-eng.github.io/nagi-presence-poc/assets/';
-const states={neutral:{img:BASE+'neutral.jpg',label:'NEUTRAL',caption:'待機中。自然にこちらを向いている状態。'},listening:{img:BASE+'listening.jpg',label:'LISTENING',caption:'話を聞いています。'},thinking:{img:BASE+'thinking.jpg',label:'THINKING',caption:'返答を考えています。'},response:{img:BASE+'neutral.jpg',label:'RESPONSE',caption:'凪さんが話しています。'},warm:{img:BASE+'warm.jpg',label:'WARM',caption:'会話の余韻。'}};
-const portrait=document.querySelector('#portrait'),placeholder=document.querySelector('#placeholder'),stateEl=document.querySelector('#state'),captionEl=document.querySelector('#caption'),statusEl=document.querySelector('#status'),diag=document.querySelector('#diag'),logEl=document.querySelector('#log'),startBtn=document.querySelector('#start'),stopBtn=document.querySelector('#stop'),stateButtons=[...document.querySelectorAll('[data-state]')];let conversation=null,loadSeq=0,lastMode='';
-const safe=v=>{try{return typeof v==='string'?v:JSON.stringify(v)}catch{return String(v)}};const stamp=()=>new Date().toLocaleTimeString('ja-JP',{hour12:false});function log(type,data=''){const line=`${stamp()}  ${type}${data!==''?'  '+safe(data):''}`;logEl.textContent=(logEl.textContent==='diagnostic log ready'?'':logEl.textContent+'\n')+line;logEl.scrollTop=logEl.scrollHeight;diag.textContent=line.slice(0,500)}function setStatus(t,k=''){statusEl.textContent=t;statusEl.className='status'+(k?' '+k:'')}
-function renderState(name,reason=''){const s=states[name]||states.neutral,seq=++loadSeq;portrait.classList.add('fading');stateEl.textContent=s.label;captionEl.textContent=s.caption;stateButtons.forEach(b=>b.classList.toggle('active',b.dataset.state===name));const pre=new Image();pre.onload=()=>{if(seq!==loadSeq)return;portrait.onload=()=>{placeholder.hidden=true;portrait.classList.remove('fading')};portrait.src=s.img+'?poc=6'};pre.onerror=()=>{placeholder.hidden=false;placeholder.textContent='画像読み込み失敗';portrait.classList.remove('fading')};pre.src=s.img+'?poc=6';if(reason)log('STATE',name+' ← '+reason)}
-stateButtons.forEach(b=>b.onclick=()=>renderState(b.dataset.state,'manual'));
-function finish(reason){conversation=null;startBtn.disabled=false;stopBtn.disabled=true;lastMode='';setStatus('voice: disconnected');renderState('neutral',reason)}
-startBtn.onclick=async()=>{if(conversation)return;startBtn.disabled=true;logEl.textContent='';log('START','button tapped');setStatus('voice: requesting microphone…');try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});log('MIC','granted; tracks='+stream.getAudioTracks().length);stream.getTracks().forEach(t=>t.stop());setStatus('voice: connecting…');conversation=await Conversation.startSession({agentId:AGENT_ID,connectionType:'webrtc',onConnect:()=>{log('CONNECT');setStatus('voice: connected','live');stopBtn.disabled=false;renderState('listening','onConnect')},onDisconnect:(details)=>{log('DISCONNECT',details);finish('onDisconnect')},onStatusChange:(e)=>{log('STATUS',e);const st=e?.status||e;setStatus('voice: '+String(st),String(st)==='connected'?'live':'')},onModeChange:(e)=>{log('MODE',e);const m=String(e?.mode||e||'').toLowerCase();lastMode=m;if(m==='speaking')renderState('response','mode speaking');else if(m==='listening')renderState('listening','mode listening')},onMessage:(m)=>{log('MESSAGE',m);const s=safe(m).toLowerCase();if(lastMode!=='speaking'&&(s.includes('user_transcript')||s.includes('"role":"user"')||s.includes('"source":"user"')))renderState('thinking','user message')},onError:(e)=>{log('ERROR',e);setStatus('voice: error','error')}});stopBtn.disabled=false;try{log('SESSION_ID',conversation.getId())}catch(e){log('SESSION_ID_ERROR',e?.message||e)}}catch(e){log('START_FAILED',e?.message||e);finish('start failed')}};
-stopBtn.onclick=async()=>{const c=conversation;if(!c)return;log('STOP','button tapped');stopBtn.disabled=true;try{await c.endSession();log('END_SESSION','resolved')}catch(e){log('END_ERROR',e?.message||e)}finally{finish('manual end')}};
-window.addEventListener('error',e=>log('WINDOW_ERROR',e.message));window.addEventListener('unhandledrejection',e=>log('PROMISE_REJECTION',e.reason));renderState('neutral','boot');
-</script></body></html>
+:root{--bg:#f5f1e8;--ink:#2f3437;--muted:#747b80;--panel:rgba(255,255,255,.76);--line:rgba(47,52,55,.12);--ok:#345b46;--err:#9a3e36}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 50% 18%,#fffdf8 0,var(--bg) 50%,#ece6da 100%);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif;min-height:100svh;display:grid;place-items:center}.app{width:min(100%,760px);min-height:100svh;padding:max(22px,env(safe-area-inset-top)) 18px max(28px,env(safe-area-inset-bottom));display:grid;grid-template-rows:auto 1fr auto;gap:20px}.top{display:flex;justify-content:space-between;gap:12px}.brand{font-weight:650}.sub,.ver,.status,.hint{font-size:12px;color:var(--muted)}.main{display:grid;place-items:center;align-content:center;gap:18px;text-align:center}.orb{width:min(48vw,250px);aspect-ratio:1;border-radius:50%;background:linear-gradient(145deg,#d8d1c4,#bfc8c2);box-shadow:0 22px 60px rgba(44,49,52,.12);display:grid;place-items:center;font-size:52px}.mode{font-size:20px;font-weight:650}.status.live{color:var(--ok)}.status.error{color:var(--err)}.panel{background:var(--panel);border:1px solid var(--line);border-radius:24px;padding:14px;display:grid;gap:12px}.buttons{display:grid;grid-template-columns:1fr 1fr;gap:10px}button{border:1px solid var(--line);background:rgba(255,255,255,.95);color:var(--ink);border-radius:16px;padding:14px 12px;font:inherit;font-weight:600}button:disabled{opacity:.45}.log{background:rgba(255,255,255,.55);border:1px solid var(--line);border-radius:14px;padding:10px;min-height:180px;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.5;text-align:left}.hint{line-height:1.5;text-align:center}@media(max-width:520px){.orb{width:min(58vw,230px)}.buttons{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main class="app">
+<header class="top"><div><div class="brand">Nagi Voice Diagnostic</div><div class="sub">Gate 2 / ElevenLabs minimal WebRTC test</div></div><div class="ver">v0.7</div></header>
+<section class="main"><div id="orb" class="orb">🎙️</div><div id="mode" class="mode">DISCONNECTED</div><div id="status" class="status">voice: disconnected</div></section>
+<section class="panel"><div class="buttons"><button id="start">会話を開始</button><button id="stop" disabled>会話を終了</button></div><div id="log" class="log">diagnostic log ready</div><div class="hint">Presence画像・状態推定は外しています。目的は「挨拶後もWebRTC会話が継続するか」だけの確認です。</div></section>
+</main>
+<script type="module">
+import { Conversation } from 'https://esm.sh/@elevenlabs/client@latest?bundle';
+const AGENT_ID='agent_8501m0nvtj12ea5vnc21ck26v9sp';
+const startBtn=document.getElementById('start'),stopBtn=document.getElementById('stop'),statusEl=document.getElementById('status'),modeEl=document.getElementById('mode'),orb=document.getElementById('orb'),logEl=document.getElementById('log');
+let conversation=null;
+const stamp=()=>new Date().toLocaleTimeString('ja-JP',{hour12:false});
+const safe=v=>{try{return typeof v==='string'?v:JSON.stringify(v)}catch{return String(v)}};
+function log(type,data=''){const line=`${stamp()}  ${type}${data!==''?'  '+safe(data):''}`;logEl.textContent=(logEl.textContent==='diagnostic log ready'?'':logEl.textContent+'\n')+line;logEl.scrollTop=logEl.scrollHeight}
+function setStatus(text,kind=''){statusEl.textContent=text;statusEl.className='status'+(kind?' '+kind:'')}
+function setMode(mode){const m=String(mode||'').toLowerCase();if(m==='speaking'){modeEl.textContent='AGENT SPEAKING';orb.textContent='🔊'}else if(m==='listening'){modeEl.textContent='LISTENING';orb.textContent='👂'}else{modeEl.textContent=String(mode||'CONNECTED').toUpperCase();orb.textContent='🎙️'}}
+function reset(reason){conversation=null;startBtn.disabled=false;stopBtn.disabled=true;setStatus('voice: disconnected');setMode('disconnected');if(reason)log('RESET',reason)}
+startBtn.addEventListener('click',async()=>{
+ if(conversation)return;
+ logEl.textContent='';log('START','button tapped');startBtn.disabled=true;setStatus('voice: requesting microphone…');
+ try{
+   const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+   const tracks=stream.getAudioTracks();log('MIC','granted; tracks='+tracks.length+'; state='+(tracks[0]?.readyState||'n/a'));
+   stream.getTracks().forEach(t=>t.stop());
+   setStatus('voice: connecting…');
+   conversation=await Conversation.startSession({
+     agentId:AGENT_ID,
+     connectionType:'webrtc',
+     onConnect:()=>{log('CONNECT');setStatus('voice: connected','live');setMode('connected');stopBtn.disabled=false},
+     onDisconnect:(details)=>{log('DISCONNECT',details);reset('onDisconnect')},
+     onStatusChange:(event)=>{log('STATUS',event);const st=event?.status||event;setStatus('voice: '+String(st),String(st)==='connected'?'live':'')},
+     onModeChange:(event)=>{log('MODE',event);setMode(event?.mode||event)},
+     onMessage:(message)=>{log('MESSAGE',message)},
+     onError:(error)=>{log('ERROR',error);setStatus('voice: error','error')}
+   });
+   stopBtn.disabled=false;
+   try{log('SESSION_ID',conversation.getId())}catch(e){log('SESSION_ID_ERROR',e?.message||e)}
+ }catch(error){log('START_FAILED',error?.message||error);setStatus('voice: start failed','error');reset('start failed')}
+});
+stopBtn.addEventListener('click',async()=>{const c=conversation;if(!c)return;stopBtn.disabled=true;log('STOP','button tapped');try{await c.endSession();log('END_SESSION','resolved')}catch(e){log('END_ERROR',e?.message||e)}finally{reset('manual end')}});
+window.addEventListener('error',e=>log('WINDOW_ERROR',e.message));
+window.addEventListener('unhandledrejection',e=>log('PROMISE_REJECTION',e.reason));
+</script>
+</body>
+</html>
