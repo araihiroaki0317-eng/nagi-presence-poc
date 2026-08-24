@@ -1,140 +1,23 @@
 <!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#f5f1e8" />
-  <title>Nagi Presence Client v0.5</title>
-  <style>
-    :root{--bg:#f5f1e8;--ink:#2f3437;--muted:#747b80;--panel:rgba(255,255,255,.72);--line:rgba(47,52,55,.12);--ok:#345b46;--warn:#8a5c31}
-    *{box-sizing:border-box}
-    body{margin:0;background:radial-gradient(circle at 50% 18%,#fffdf8 0,var(--bg) 48%,#ece6da 100%);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Hiragino Sans","Yu Gothic",sans-serif;min-height:100svh;display:grid;place-items:center}
-    .app{width:min(100%,860px);min-height:100svh;padding:max(18px,env(safe-area-inset-top)) 20px max(24px,env(safe-area-inset-bottom));display:grid;grid-template-rows:auto 1fr auto;gap:18px}
-    .top{display:flex;align-items:center;justify-content:space-between;gap:12px}.brand{font-weight:600;letter-spacing:.02em}.phase{font-size:12px;color:var(--muted)}
-    .stage{display:grid;place-items:center;align-content:center;gap:16px}
-    .portrait-wrap{position:relative;width:min(74vw,420px);aspect-ratio:1/1;border-radius:36px;overflow:hidden;background:#d7d1c5;box-shadow:0 22px 60px rgba(44,49,52,.12)}
-    .portrait{position:absolute;inset:0;z-index:2;width:100%;height:100%;object-fit:cover;display:block;transition:opacity .22s ease,transform .22s ease;transform:scale(1.001)}
-    .portrait.fading{opacity:.35;transform:scale(1.008)}
-    .placeholder{position:absolute;inset:0;z-index:1;display:grid;place-items:center;text-align:center;padding:28px;background:linear-gradient(145deg,#d8d1c4,#bfc8c2);color:#fff;font-size:14px;line-height:1.6}.placeholder[hidden]{display:none!important}
-    .state{font-size:14px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}.caption{min-height:2.8em;max-width:620px;text-align:center;font-size:17px;line-height:1.65}
-    .status{font-size:12px;color:var(--muted);text-align:center}.status.live{color:var(--ok)}.status.error{color:#9a3e36}
-    .diag{font-size:10px;color:var(--muted);text-align:center;max-width:680px;word-break:break-all;min-height:1.4em;opacity:.75}
-    .controls{background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(14px);border-radius:24px;padding:14px;display:grid;gap:12px}
-    .voice-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.state-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
-    button{appearance:none;border:1px solid var(--line);background:rgba(255,255,255,.9);color:var(--ink);border-radius:16px;padding:13px 10px;font:inherit;font-size:14px;cursor:pointer}button:disabled{opacity:.45}button:active{transform:translateY(1px)}button.active{background:#2f3437;color:#fff}.primary{font-weight:600}.stop{color:#8b3d38}.note{font-size:12px;color:var(--muted);text-align:center;line-height:1.55}
-    @media(max-width:520px){.app{padding-left:14px;padding-right:14px}.portrait-wrap{width:min(84vw,390px);border-radius:28px}.state-row{grid-template-columns:repeat(2,1fr)}.caption{font-size:16px}}
-  </style>
-</head>
-<body>
-<main class="app">
-<header class="top"><div><div class="brand">Nagi Presence Client</div><div class="phase">Phase 1 / Gate 2 Voice × Presence</div></div><div class="phase">v0.5</div></header>
-<section class="stage">
-  <div class="portrait-wrap"><img id="portrait" class="portrait" alt="Nagi state"><div id="placeholder" class="placeholder">凪さん画像を読み込み中です。</div></div>
-  <div id="state" class="state">NEUTRAL</div>
-  <div id="caption" class="caption">待機中。会話開始でElevenLabs Agentへ接続します。</div>
-  <div id="status" class="status">voice: disconnected</div>
-  <div id="diag" class="diag"></div>
-</section>
-<section class="controls">
-  <div class="voice-row"><button id="start" class="primary">🎙 会話を開始</button><button id="stop" class="stop" disabled>会話を終了</button></div>
-  <div class="state-row"><button data-state="neutral" class="active">Neutral</button><button data-state="listening">Listening</button><button data-state="thinking">Thinking</button><button data-state="warm">Warm</button></div>
-  <div class="note">Gate 2：実際の音声会話イベントで表情が切り替わるかを検証。Thinkingはユーザー発話確定後〜Agent発話開始までを暫定推定します。</div>
-</section>
-</main>
-<script type="module">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f5f1e8"><title>Nagi Presence Client v0.6</title>
+<style>
+:root{--bg:#f5f1e8;--ink:#2f3437;--muted:#747b80;--panel:rgba(255,255,255,.72);--line:rgba(47,52,55,.12);--ok:#345b46}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 50% 18%,#fffdf8 0,var(--bg) 48%,#ece6da 100%);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif;min-height:100svh;display:grid;place-items:center}.app{width:min(100%,860px);min-height:100svh;padding:max(18px,env(safe-area-inset-top)) 20px max(24px,env(safe-area-inset-bottom));display:grid;grid-template-rows:auto 1fr auto;gap:16px}.top{display:flex;justify-content:space-between}.brand{font-weight:600}.phase,.status,.diag,.log{font-size:12px;color:var(--muted)}.stage{display:grid;place-items:center;align-content:center;gap:14px}.portrait-wrap{position:relative;width:min(74vw,420px);aspect-ratio:1;border-radius:36px;overflow:hidden;background:#d7d1c5;box-shadow:0 22px 60px rgba(44,49,52,.12)}.portrait{position:absolute;inset:0;z-index:2;width:100%;height:100%;object-fit:cover;transition:opacity .2s ease}.portrait.fading{opacity:.4}.placeholder{position:absolute;inset:0;z-index:1;display:grid;place-items:center;color:#fff;background:#c8c8bf}.placeholder[hidden]{display:none!important}.state{font-size:14px;color:var(--muted);letter-spacing:.08em}.caption{text-align:center;font-size:17px}.status.live{color:var(--ok)}.status.error{color:#9a3e36}.diag{text-align:center;word-break:break-all}.controls{background:var(--panel);border:1px solid var(--line);border-radius:24px;padding:14px;display:grid;gap:10px}.voice-row,.state-row{display:grid;gap:10px}.voice-row{grid-template-columns:1fr 1fr}.state-row{grid-template-columns:repeat(4,1fr)}button{border:1px solid var(--line);background:rgba(255,255,255,.9);color:var(--ink);border-radius:16px;padding:13px 10px;font:inherit}button:disabled{opacity:.45}button.active{background:#2f3437;color:#fff}.primary{font-weight:600}.log{background:rgba(255,255,255,.55);border:1px solid var(--line);border-radius:14px;padding:10px;max-height:150px;overflow:auto;white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.45}.note{text-align:center;font-size:11px;color:var(--muted)}@media(max-width:520px){.app{padding-left:14px;padding-right:14px}.portrait-wrap{width:min(84vw,390px)}.state-row{grid-template-columns:repeat(2,1fr)}}
+</style></head><body><main class="app">
+<header class="top"><div><div class="brand">Nagi Presence Client</div><div class="phase">Phase 1 / Gate 2 Voice × Presence</div></div><div class="phase">v0.6</div></header>
+<section class="stage"><div class="portrait-wrap"><img id="portrait" class="portrait" alt="Nagi state"><div id="placeholder" class="placeholder">凪さん画像を読み込み中です。</div></div><div id="state" class="state">NEUTRAL</div><div id="caption" class="caption">待機中。</div><div id="status" class="status">voice: disconnected</div><div id="diag" class="diag"></div></section>
+<section class="controls"><div class="voice-row"><button id="start" class="primary">🎙 会話を開始</button><button id="stop" disabled>会話を終了</button></div><div class="state-row"><button data-state="neutral" class="active">Neutral</button><button data-state="listening">Listening</button><button data-state="thinking">Thinking</button><button data-state="warm">Warm</button></div><div id="log" class="log">diagnostic log ready</div><div class="note">v0.6 diagnostic build：status / mode / message / error / disconnect を時系列表示します。</div></section>
+</main><script type="module">
 import { Conversation } from 'https://esm.sh/@elevenlabs/client@1.7.1?bundle';
-
-const AGENT_ID='agent_8501m0nvtj12ea5vnc21ck26v9sp';
-const BASE='https://araihiroaki0317-eng.github.io/nagi-presence-poc/assets/';
-const states={
- neutral:{img:BASE+'neutral.jpg',label:'NEUTRAL',caption:'待機中。自然にこちらを向いている状態。'},
- listening:{img:BASE+'listening.jpg',label:'LISTENING',caption:'話を聞いています。'},
- thinking:{img:BASE+'thinking.jpg',label:'THINKING',caption:'返答を考えています。'},
- response:{img:BASE+'neutral.jpg',label:'RESPONSE',caption:'凪さんが話しています。'},
- warm:{img:BASE+'warm.jpg',label:'WARM',caption:'会話の余韻。'}
-};
-
-const portrait=document.getElementById('portrait');
-const placeholder=document.getElementById('placeholder');
-const stateEl=document.getElementById('state');
-const captionEl=document.getElementById('caption');
-const statusEl=document.getElementById('status');
-const diag=document.getElementById('diag');
-const stateButtons=[...document.querySelectorAll('[data-state]')];
-const startBtn=document.getElementById('start');
-const stopBtn=document.getElementById('stop');
-let conversation=null;
-let loadSeq=0;
-let lastMode='';
-
-function setStatus(text,kind=''){
-  statusEl.textContent=text;
-  statusEl.className='status'+(kind?' '+kind:'');
-}
-function safeJSON(value){try{return JSON.stringify(value)}catch{return String(value)}}
-function renderState(name,reason=''){
-  const s=states[name]||states.neutral;
-  const seq=++loadSeq;
-  portrait.classList.add('fading');
-  stateEl.textContent=s.label;
-  captionEl.textContent=s.caption;
-  stateButtons.forEach(b=>b.classList.toggle('active',b.dataset.state===name));
-  const pre=new Image();
-  pre.onload=()=>{if(seq!==loadSeq)return;portrait.onload=()=>{placeholder.hidden=true;portrait.classList.remove('fading')};portrait.src=s.img+'?poc=5';};
-  pre.onerror=()=>{if(seq!==loadSeq)return;placeholder.hidden=false;placeholder.textContent='画像の読み込みに失敗しました。';portrait.classList.remove('fading')};
-  pre.src=s.img+'?poc=5';
-  if(reason) diag.textContent=reason;
-}
-function looksLikeUserMessage(m){
-  const x=m||{};
-  const values=[x.source,x.role,x.type,x.message?.source,x.message?.role,x.message?.type].filter(Boolean).map(v=>String(v).toLowerCase());
-  return values.some(v=>v.includes('user'));
-}
-
-stateButtons.forEach(b=>b.addEventListener('click',()=>renderState(b.dataset.state,'manual state test')));
-
-startBtn.addEventListener('click',async()=>{
-  if(conversation)return;
-  startBtn.disabled=true;
-  setStatus('voice: requesting microphone…');
-  diag.textContent='starting ElevenLabs WebRTC session…';
-  try{
-    await navigator.mediaDevices.getUserMedia({audio:true});
-    conversation=await Conversation.startSession({
-      agentId:AGENT_ID,
-      connectionType:'webrtc',
-      onConnect:()=>{setStatus('voice: connected','live');stopBtn.disabled=false;renderState('listening','connected → listening');},
-      onDisconnect:()=>{conversation=null;startBtn.disabled=false;stopBtn.disabled=true;lastMode='';setStatus('voice: disconnected');renderState('neutral','disconnected → neutral');},
-      onStatusChange:(event)=>{const st=event?.status||event;setStatus('voice: '+String(st),String(st)==='connected'?'live':'');diag.textContent='status: '+safeJSON(event);},
-      onModeChange:(event)=>{
-        const mode=String(event?.mode||event||'').toLowerCase();
-        lastMode=mode;
-        if(mode==='speaking') renderState('response','mode: speaking → response');
-        else if(mode==='listening') renderState('listening','mode: listening');
-        else diag.textContent='mode: '+safeJSON(event);
-      },
-      onMessage:(message)=>{
-        diag.textContent='message: '+safeJSON(message).slice(0,500);
-        if(lastMode!=='speaking' && looksLikeUserMessage(message)) renderState('thinking','user message → provisional thinking');
-      },
-      onError:(error)=>{setStatus('voice: error','error');diag.textContent='error: '+safeJSON(error).slice(0,700);}
-    });
-    try{diag.textContent='conversation id: '+conversation.getId()}catch{}
-  }catch(error){
-    conversation=null;startBtn.disabled=false;stopBtn.disabled=true;setStatus('voice: start failed','error');diag.textContent='start failed: '+(error?.message||safeJSON(error));renderState('neutral');
-  }
-});
-
-stopBtn.addEventListener('click',async()=>{
-  const c=conversation;
-  if(!c)return;
-  stopBtn.disabled=true;
-  setStatus('voice: disconnecting…');
-  try{await c.endSession()}catch(error){diag.textContent='end error: '+(error?.message||safeJSON(error))}
-  finally{conversation=null;startBtn.disabled=false;stopBtn.disabled=true;lastMode='';setStatus('voice: disconnected');renderState('neutral','session ended');}
-});
-
-renderState('neutral');
-</script>
-</body>
-</html>
+const AGENT_ID='agent_8501m0nvtj12ea5vnc21ck26v9sp',BASE='https://araihiroaki0317-eng.github.io/nagi-presence-poc/assets/';
+const states={neutral:{img:BASE+'neutral.jpg',label:'NEUTRAL',caption:'待機中。自然にこちらを向いている状態。'},listening:{img:BASE+'listening.jpg',label:'LISTENING',caption:'話を聞いています。'},thinking:{img:BASE+'thinking.jpg',label:'THINKING',caption:'返答を考えています。'},response:{img:BASE+'neutral.jpg',label:'RESPONSE',caption:'凪さんが話しています。'},warm:{img:BASE+'warm.jpg',label:'WARM',caption:'会話の余韻。'}};
+const portrait=document.querySelector('#portrait'),placeholder=document.querySelector('#placeholder'),stateEl=document.querySelector('#state'),captionEl=document.querySelector('#caption'),statusEl=document.querySelector('#status'),diag=document.querySelector('#diag'),logEl=document.querySelector('#log'),startBtn=document.querySelector('#start'),stopBtn=document.querySelector('#stop'),stateButtons=[...document.querySelectorAll('[data-state]')];let conversation=null,loadSeq=0,lastMode='';
+const safe=v=>{try{return typeof v==='string'?v:JSON.stringify(v)}catch{return String(v)}};const stamp=()=>new Date().toLocaleTimeString('ja-JP',{hour12:false});function log(type,data=''){const line=`${stamp()}  ${type}${data!==''?'  '+safe(data):''}`;logEl.textContent=(logEl.textContent==='diagnostic log ready'?'':logEl.textContent+'\n')+line;logEl.scrollTop=logEl.scrollHeight;diag.textContent=line.slice(0,500)}function setStatus(t,k=''){statusEl.textContent=t;statusEl.className='status'+(k?' '+k:'')}
+function renderState(name,reason=''){const s=states[name]||states.neutral,seq=++loadSeq;portrait.classList.add('fading');stateEl.textContent=s.label;captionEl.textContent=s.caption;stateButtons.forEach(b=>b.classList.toggle('active',b.dataset.state===name));const pre=new Image();pre.onload=()=>{if(seq!==loadSeq)return;portrait.onload=()=>{placeholder.hidden=true;portrait.classList.remove('fading')};portrait.src=s.img+'?poc=6'};pre.onerror=()=>{placeholder.hidden=false;placeholder.textContent='画像読み込み失敗';portrait.classList.remove('fading')};pre.src=s.img+'?poc=6';if(reason)log('STATE',name+' ← '+reason)}
+stateButtons.forEach(b=>b.onclick=()=>renderState(b.dataset.state,'manual'));
+function finish(reason){conversation=null;startBtn.disabled=false;stopBtn.disabled=true;lastMode='';setStatus('voice: disconnected');renderState('neutral',reason)}
+startBtn.onclick=async()=>{if(conversation)return;startBtn.disabled=true;logEl.textContent='';log('START','button tapped');setStatus('voice: requesting microphone…');try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});log('MIC','granted; tracks='+stream.getAudioTracks().length);stream.getTracks().forEach(t=>t.stop());setStatus('voice: connecting…');conversation=await Conversation.startSession({agentId:AGENT_ID,connectionType:'webrtc',onConnect:()=>{log('CONNECT');setStatus('voice: connected','live');stopBtn.disabled=false;renderState('listening','onConnect')},onDisconnect:(details)=>{log('DISCONNECT',details);finish('onDisconnect')},onStatusChange:(e)=>{log('STATUS',e);const st=e?.status||e;setStatus('voice: '+String(st),String(st)==='connected'?'live':'')},onModeChange:(e)=>{log('MODE',e);const m=String(e?.mode||e||'').toLowerCase();lastMode=m;if(m==='speaking')renderState('response','mode speaking');else if(m==='listening')renderState('listening','mode listening')},onMessage:(m)=>{log('MESSAGE',m);const s=safe(m).toLowerCase();if(lastMode!=='speaking'&&(s.includes('user_transcript')||s.includes('"role":"user"')||s.includes('"source":"user"')))renderState('thinking','user message')},onError:(e)=>{log('ERROR',e);setStatus('voice: error','error')}});stopBtn.disabled=false;try{log('SESSION_ID',conversation.getId())}catch(e){log('SESSION_ID_ERROR',e?.message||e)}}catch(e){log('START_FAILED',e?.message||e);finish('start failed')}};
+stopBtn.onclick=async()=>{const c=conversation;if(!c)return;log('STOP','button tapped');stopBtn.disabled=true;try{await c.endSession();log('END_SESSION','resolved')}catch(e){log('END_ERROR',e?.message||e)}finally{finish('manual end')}};
+window.addEventListener('error',e=>log('WINDOW_ERROR',e.message));window.addEventListener('unhandledrejection',e=>log('PROMISE_REJECTION',e.reason));renderState('neutral','boot');
+</script></body></html>
