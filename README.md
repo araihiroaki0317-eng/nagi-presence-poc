@@ -40,3 +40,14 @@ storage and analysis are a later slice and require an explicit Cloudflare storag
 binding. No inferred Role / Mode is persisted as state.
 
 Run the unit tests with `npm test`.
+
+## Browser support policy
+
+- Reference runtime: Chrome across desktop, Android, iPadOS, and iOS
+- Primary compatibility target: Safari on iPadOS and iOS
+- Core implementation: standards-based Web APIs; no required Chrome extension
+- Optional future AI integrations: adapters such as APIs or MCP, not hard
+  dependencies of the Presence client
+
+Chrome-specific extensions or built-in AI APIs may be evaluated later, but the
+core conversation and Presence experience must remain usable without them.
