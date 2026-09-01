@@ -25,3 +25,18 @@
 ## Gate 1 PASS condition
 
 コードが動くことではなく、実機上で写真の切替ではなく同じ凪さんが会話状態に応じて反応しているように感じられること。
+
+## Phase 2D runtime foundation
+
+`runtime/` contains the first implementation slice of the Mode / Role handoff:
+
+- minimal runtime state with provenance-checked overrides and project state
+- deterministic turn/session override expiry
+- append-only event semantics with sequence numbers and idempotency keys
+- browser-local event persistence behind a replaceable store boundary
+
+The current PoC intentionally keeps events in browser storage. Durable server-side
+storage and analysis are a later slice and require an explicit Cloudflare storage
+binding. No inferred Role / Mode is persisted as state.
+
+Run the unit tests with `npm test`.
