@@ -1,0 +1,8 @@
+{
+  "name": "nagi-presence-poc",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}
