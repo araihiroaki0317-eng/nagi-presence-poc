@@ -34,6 +34,8 @@
 - deterministic turn/session override expiry
 - append-only event semantics with sequence numbers and idempotency keys
 - browser-local event persistence behind a replaceable store boundary
+- lightweight structured checkpoints after completed turns and manual stops
+- in-page event inspection and JSONL export for human verification
 
 The current PoC intentionally keeps events in browser storage. Durable server-side
 storage and analysis are a later slice and require an explicit Cloudflare storage

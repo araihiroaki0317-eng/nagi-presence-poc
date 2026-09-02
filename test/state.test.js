@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { NagiRuntimeState } from '../runtime/state.js';
 import { EventLog } from '../runtime/event-log.js';
+import { createCheckpoint, LocalStorageCheckpointStore, contextFromCheckpoint } from '../runtime/checkpoint.js';
 
 test('current turn override expires deterministically', () => {
   const state = new NagiRuntimeState();
@@ -46,4 +47,24 @@ test('event log assigns order and suppresses duplicate idempotency keys', async 
   await log.append({ event_type: 'session_ended' });
   assert.equal(duplicate.duplicate, true);
   assert.deepEqual(rows.map(row => row.sequence_number), [1, 2]);
+});
+
+test('checkpoint preserves facts without inventing analysis', () => {
+  const values = new Map();
+  const storage = {
+    getItem(key) { return values.get(key) || null; },
+    setItem(key, value) { values.set(key, value); },
+  };
+  const store = new LocalStorageCheckpointStore('checkpoint', storage);
+  const checkpoint = createCheckpoint({
+    source_event_id: 'evt_10',
+    active_project: { project_id: 'nagi', phase: '2d', current_topic: 'checkpoint' },
+    recent_turns: [{ role: 'user', text: '続きをやろう' }],
+    reason: 'completed_turn',
+  });
+  store.save(checkpoint);
+  const restored = store.readLatest();
+  assert.deepEqual(restored.confirmed_decisions, []);
+  assert.match(contextFromCheckpoint(restored), /Active project: nagi/);
+  assert.match(contextFromCheckpoint(restored), /ヒロ: 続きをやろう/);
 });
