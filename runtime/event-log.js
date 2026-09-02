@@ -72,4 +72,9 @@ export class EventLog {
     await this.queue;
     return (await this.store.read()).map(event => JSON.stringify(event)).join('\n');
   }
+
+  async list() {
+    await this.queue;
+    return this.store.read();
+  }
 }
