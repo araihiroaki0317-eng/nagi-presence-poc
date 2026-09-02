@@ -20,6 +20,14 @@ test('project state requires provenance', () => {
     /source_event_id_required/);
 });
 
+test('undefined modes cannot be injected as overrides', () => {
+  const state = new NagiRuntimeState();
+  assert.throws(() => state.setOverride({
+    type: 'mode', value: 'angry', scope: 'current_session', source_event_id: 'evt_2',
+  }), /invalid_mode_override_value/);
+  assert.equal(state.snapshot().mode_override, null);
+});
+
 test('event log assigns order and suppresses duplicate idempotency keys', async () => {
   const rows = [];
   const store = {

@@ -6,6 +6,14 @@ const OVERRIDE_SCOPES = new Set([
 ]);
 
 const PROJECT_STATUSES = new Set(['foreground', 'background', 'closed']);
+const MODE_VALUES = new Set([
+  'listening',
+  'thinking',
+  'critical',
+  'planning',
+  'execution',
+  'playful',
+]);
 
 export function createInitialState() {
   return {
@@ -30,6 +38,9 @@ export class NagiRuntimeState {
     if (!override?.source_event_id) throw new Error('source_event_id_required');
     if (!['role', 'mode'].includes(override.type)) throw new Error('invalid_override_type');
     if (!OVERRIDE_SCOPES.has(override.scope)) throw new Error('invalid_override_scope');
+    if (override.type === 'mode' && !MODE_VALUES.has(override.value)) {
+      throw new Error('invalid_mode_override_value');
+    }
 
     const normalized = {
       override_id: override.override_id || crypto.randomUUID(),
