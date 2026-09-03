@@ -1,4 +1,4 @@
-const SCHEMA_VERSION = '0.1';
+const SCHEMA_VERSION = '0.2';
 
 function fallbackId() {
   return `evt_${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -50,6 +50,9 @@ export class EventLog {
         event_type: input.event_type,
         speaker: input.speaker || 'system',
         transcript: input.transcript || null,
+        input_channel: input.input_channel || null,
+        output_channel: input.output_channel || null,
+        transcript_source: input.transcript_source || null,
         interrupted: input.interrupted === true,
         explicit_correction: input.explicit_correction === true,
         active_project_id: input.active_project_id || null,

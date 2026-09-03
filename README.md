@@ -53,3 +53,25 @@ Run the unit tests with `npm test`.
 
 Chrome-specific extensions or built-in AI APIs may be evaluated later, but the
 core conversation and Presence experience must remain usable without them.
+
+## Milestone 3C: voice + chat
+
+The Presence client now treats voice and text as channels of one conversation,
+not as separate personas or memory streams.
+
+- Voice input with voice + text responses
+- Text input with text-only responses by default
+- Optional text input with voice + text responses
+- One expandable transcript shared by every channel
+- Channel provenance in the JSONL event log
+- Conversation checkpoints preserved when switching channels
+- Gentle phrase-by-phrase reveal for short agent replies; tap to reveal instantly
+- Reduced-motion and long-response fallbacks
+
+Open the client with `?mock=1` to exercise connection, message, motion,
+transcript, resume, and logging behavior without starting an ElevenLabs session.
+
+For live text-only conversations, the ElevenLabs agent must allow the
+conversation `textOnly` runtime override and emit agent response events. Keep
+the agent itself voice-capable; the client selects text-only behavior per
+session.

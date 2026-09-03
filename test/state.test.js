@@ -3,6 +3,12 @@ import assert from 'node:assert/strict';
 import { NagiRuntimeState } from '../runtime/state.js';
 import { EventLog } from '../runtime/event-log.js';
 import { createCheckpoint, LocalStorageCheckpointStore, contextFromCheckpoint } from '../runtime/checkpoint.js';
+import {
+  CONVERSATION_PROFILES,
+  ElevenLabsConversationAdapter,
+  sessionOptionsFor,
+} from '../runtime/conversation-adapter.js';
+import { LocalTranscriptStore, transcriptContext } from '../runtime/transcript.js';
 
 test('current turn override expires deterministically', () => {
   const state = new NagiRuntimeState();
@@ -67,4 +73,49 @@ test('checkpoint preserves facts without inventing analysis', () => {
   assert.deepEqual(restored.confirmed_decisions, []);
   assert.match(contextFromCheckpoint(restored), /Active project: nagi/);
   assert.match(contextFromCheckpoint(restored), /ヒロ: 続きをやろう/);
+});
+
+test('text-only profile uses websocket without microphone audio', () => {
+  const options = sessionOptionsFor(CONVERSATION_PROFILES.TEXT_SILENT);
+  assert.equal(options.connectionType, 'websocket');
+  assert.equal(options.textOnly, true);
+  assert.equal(options.overrides.conversation.textOnly, true);
+});
+
+test('typed message can use a voice reply while microphone stays muted', async () => {
+  const calls = [];
+  const session = {
+    setMicMuted(value) { calls.push(['mute', value]); },
+    sendUserMessage(value) { calls.push(['message', value]); },
+    async endSession() { calls.push(['end']); },
+  };
+  const Conversation = {
+    async startSession(options) {
+      calls.push(['start', options]);
+      return session;
+    },
+  };
+  const adapter = new ElevenLabsConversationAdapter({ Conversation, agentId: 'agent_test' });
+  await adapter.start(CONVERSATION_PROFILES.TEXT_AUDIO);
+  adapter.sendText('文字で送る');
+  await adapter.end();
+  assert.equal(calls[0][1].connectionType, 'webrtc');
+  assert.equal(calls[0][1].micMuted, true);
+  assert.deepEqual(calls.slice(1), [['mute', true], ['message', '文字で送る'], ['end']]);
+});
+
+test('transcript merges growing sdk text and keeps typed turns distinct', () => {
+  const storage = new Map();
+  const memory = {
+    getItem(key) { return storage.get(key) || null; },
+    setItem(key, value) { storage.set(key, value); },
+  };
+  const store = new LocalTranscriptStore('transcript', memory);
+  store.append({ role: 'agent', text: '少し', source: 'sdk', ts: 1000 });
+  const grown = store.append({ role: 'agent', text: '少し考えます。', source: 'sdk', ts: 1100 });
+  store.append({ role: 'user', text: 'お願いします', source: 'typed', input_channel: 'text', ts: 1200 });
+  assert.equal(grown.replaced, true);
+  assert.equal(store.read().length, 2);
+  assert.equal(store.read()[0].text, '少し考えます。');
+  assert.match(transcriptContext(store.read()), /ヒロ: お願いします/);
 });
