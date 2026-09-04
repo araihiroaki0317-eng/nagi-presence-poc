@@ -1,18 +1,33 @@
-import { Conversation } from 'https://esm.sh/@elevenlabs/client@latest?bundle';
 import { eventLog, runtimeEvent, runtimeState } from './runtime/runtime.js';
 import { createCheckpoint, LocalStorageCheckpointStore, contextFromCheckpoint } from './runtime/checkpoint.js';
 import {
   CONVERSATION_PROFILES,
-  ElevenLabsConversationAdapter,
+  LazyElevenLabsConversationAdapter,
   MockConversationAdapter,
 } from './runtime/conversation-adapter.js';
 import { LocalTranscriptStore, transcriptContext } from './runtime/transcript.js';
+import { budgetNoticeFromError, budgetNoticeFromEvent } from './runtime/budget-notice.js';
+import { RouteAccessController } from './runtime/route-access.js';
+import { selectFallbackRoute } from './runtime/fallback-router.js';
+import { MockConversationProvider } from './providers/mock-provider.js';
 
 const AGENT_ID = 'agent_8501m0nvtj12ea5vnc21ck26v9sp';
 const BASE = './assets/';
 const RESUME_KEY = 'nagi.m3a.resume.v1';
 const SPEAKING_RELEASE_MS = 1000;
 const MOCK_MODE = new URLSearchParams(location.search).get('mock') === '1';
+const ACTIVE_PAID_ROUTE_ID = 'legacy-elevenlabs';
+const FREE_TEXT_ROUTE_ID = 'mock-free-text';
+const CORE_LIFECYCLE_EVENTS = new Set([
+  'provider_connect_started',
+  'provider_connected',
+  'provider_connect_failed',
+  'provider_disconnected',
+  'logical_conversation_started',
+  'logical_conversation_resumed',
+  'logical_conversation_paused',
+  'logical_conversation_closed',
+]);
 
 const motionAssets = {
   listening: BASE + 'listening_loop_v02.MP4',
@@ -51,12 +66,42 @@ const textInput = byId('textInput');
 const sendTextBtn = byId('sendText');
 const inspectLogBtn = byId('inspectLog');
 const exportLogBtn = byId('exportLog');
+const budgetNoticeEl = byId('budgetNotice');
+const budgetMessageEl = byId('budgetMessage');
+const budgetDismissBtn = byId('budgetDismiss');
 
 const checkpointStore = new LocalStorageCheckpointStore();
 const transcriptStore = new LocalTranscriptStore();
-const adapter = MOCK_MODE
-  ? new MockConversationAdapter()
-  : new ElevenLabsConversationAdapter({ Conversation, agentId: AGENT_ID });
+const routeAccess = new RouteAccessController();
+const routeRegistry = MOCK_MODE ? [{
+  route_id: FREE_TEXT_ROUTE_ID,
+  available: true,
+  billing: 'none',
+  priority: 1,
+  input_channels: ['text'],
+  output_channels: ['text'],
+}] : [];
+let adapter;
+if (MOCK_MODE) {
+  adapter = new MockConversationAdapter({
+    eventSink: event => {
+      if (!CORE_LIFECYCLE_EVENTS.has(event.type)) return;
+      return runtimeEvent(event.type, {
+        session_id: sessionId,
+        input_channel: event.input_channel,
+        output_channel: event.output_channels?.join('+') || null,
+        metadata: {
+          conversation_id: event.conversation_id,
+          provider_id: event.provider_id,
+          provider_session_id: event.provider_session_id || null,
+          reason: event.reason || null,
+        },
+      });
+    },
+  });
+} else {
+  adapter = new LazyElevenLabsConversationAdapter({ agentId: AGENT_ID });
+}
 
 let loadSeq = 0;
 let lastMode = '';
@@ -92,6 +137,76 @@ function setStatus(text, kind = '') {
   statusEl.className = 'status' + (kind ? ' ' + kind : '');
 }
 
+function textFallbackSelection() {
+  return selectFallbackRoute({
+    fromRouteId: ACTIVE_PAID_ROUTE_ID,
+    routes: routeRegistry,
+    accessController: routeAccess,
+    inputChannel: 'text',
+    outputChannel: 'text',
+  });
+}
+
+async function activateTextFallback(route) {
+  if (!route || typeof adapter.switchToTextFallback !== 'function') return false;
+  const priorContext = contextForResume();
+  await adapter.switchToTextFallback({
+    provider: new MockConversationProvider(),
+    context: priorContext,
+  });
+  currentProfile = CONVERSATION_PROFILES.TEXT_SILENT;
+  setStatus('chat: fallback connected', 'live');
+  continuityEl.textContent = 'conversation: continued in text';
+  continuityEl.className = 'continuity ready';
+  conversationPanel.open = true;
+  updateControls();
+  runtimeEvent('fallback_route_activated', {
+    session_id: sessionId,
+    metadata: { from_route: ACTIVE_PAID_ROUTE_ID, to_route: route.route_id },
+  });
+  return true;
+}
+
+function showBudgetNotice(notice) {
+  if (!notice) return;
+  budgetNoticeEl.hidden = false;
+  budgetNoticeEl.dataset.severity = notice.severity;
+  budgetMessageEl.textContent = notice.message;
+  budgetDismissBtn.textContent = notice.severity === 'hard' ? '閉じる' : '確認';
+  if (notice.severity === 'hard') {
+    routeAccess.lockRoute({
+      routeId: ACTIVE_PAID_ROUTE_ID,
+      reason: notice.reasons[0] || notice.code,
+      sourceEventId: sessionId,
+    });
+    const fallback = textFallbackSelection();
+    if (fallback.route) {
+      budgetMessageEl.textContent = `${notice.message} 文字で同じ会話を続けます。`;
+      setStatus('voice: paused / switching to chat', 'error');
+      activateTextFallback(fallback.route).catch(error => {
+        debug('FALLBACK_FAILED', error?.message || error);
+        setStatus('paid route: paused', 'error');
+        updateControls();
+      });
+    } else {
+      setStatus('paid route: paused', 'error');
+    }
+    updateControls();
+  }
+  runtimeEvent(
+    notice.severity === 'hard' ? 'budget_hard_limit_reached' : 'budget_soft_limit_reached',
+    {
+      session_id: sessionId,
+      metadata: { code: notice.code, reasons: notice.reasons },
+    },
+  );
+}
+
+function hideBudgetNotice() {
+  budgetNoticeEl.hidden = true;
+  budgetNoticeEl.removeAttribute('data-severity');
+}
+
 function setResumable(value) {
   resumable = Boolean(value);
   localStorage.setItem(RESUME_KEY, resumable ? '1' : '0');
@@ -107,10 +222,12 @@ function selectedTextProfile() {
 
 function updateControls() {
   const active = adapter.active || connecting;
-  startVoiceBtn.disabled = connecting;
-  startTextBtn.disabled = connecting;
+  const paidRouteBlocked = !routeAccess.canUse(ACTIVE_PAID_ROUTE_ID);
+  const textFallbackAvailable = Boolean(textFallbackSelection().route);
+  startVoiceBtn.disabled = connecting || paidRouteBlocked;
+  startTextBtn.disabled = connecting || (paidRouteBlocked && !textFallbackAvailable);
   stopBtn.disabled = !active;
-  sendTextBtn.disabled = connecting;
+  sendTextBtn.disabled = connecting || (paidRouteBlocked && !textFallbackAvailable);
   startVoiceBtn.classList.toggle('active', currentProfile === CONVERSATION_PROFILES.VOICE);
   startTextBtn.classList.toggle('active', currentProfile === CONVERSATION_PROFILES.TEXT_AUDIO || currentProfile === CONVERSATION_PROFILES.TEXT_SILENT);
   startVoiceBtn.textContent = currentProfile && currentProfile !== CONVERSATION_PROFILES.VOICE ? '🎙 声に切り替える' : '🎙 声で話す';
@@ -431,7 +548,9 @@ function callbacksFor(profile, isResume) {
       debug('ERROR', error);
       runtimeEvent('runtime_error', { session_id: sessionId, processing_status: 'failed', error: error?.message || safe(error) });
       setStatus(friendlyError(error), 'error');
+      showBudgetNotice(budgetNoticeFromError(error));
     },
+    onBudget: event => showBudgetNotice(budgetNoticeFromEvent(event)),
   };
 }
 
@@ -460,6 +579,11 @@ async function endConversation(reason = 'manual_stop', preserve = true) {
 }
 
 async function startConversation(profile) {
+  if (!routeAccess.canUse(ACTIVE_PAID_ROUTE_ID)
+    && !(profile === CONVERSATION_PROFILES.TEXT_SILENT && textFallbackSelection().route)) {
+    setStatus('paid route: paused', 'error');
+    return false;
+  }
   if (adapter.active && currentProfile === profile) return true;
   if (adapter.active) await endConversation('channel_switch', true);
 
@@ -515,7 +639,13 @@ async function sendTypedMessage(text) {
     if (!started) return;
   }
   await recordTurn({ role: 'user', text: value, source: 'typed' });
-  adapter.sendText(value);
+  try {
+    await adapter.sendText(value);
+  } catch (error) {
+    const notice = budgetNoticeFromError(error);
+    if (notice) showBudgetNotice(notice);
+    else throw error;
+  }
   renderState('thinking', 'typed message sent');
   textInput.value = '';
   textInput.style.height = '';
@@ -559,6 +689,8 @@ conversationPanel.addEventListener('toggle', () => {
   unreadEl.hidden = true;
   transcriptEl.scrollTop = transcriptEl.scrollHeight;
 });
+
+budgetDismissBtn.addEventListener('click', hideBudgetNotice);
 
 inspectLogBtn.addEventListener('click', async () => {
   const events = await eventLog.list();

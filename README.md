@@ -75,3 +75,37 @@ For live text-only conversations, the ElevenLabs agent must allow the
 conversation `textOnly` runtime override and emit agent response events. Keep
 the agent itself voice-capable; the client selects text-only behavior per
 session.
+
+## Conversation Core separation (Slice 0)
+
+The mock path now runs through a provider-neutral `ConversationCore`.
+
+- `runtime/conversation-core.js` owns the logical conversation lifecycle.
+- `runtime/channel-route.js` models input and output channels independently.
+- `providers/mock-provider.js` implements the first common provider contract.
+- Provider disconnect pauses rather than closes the logical conversation.
+- Mock lifecycle events are written to the existing JSONL event stream.
+
+The live ElevenLabs route remains a legacy adapter in this slice. No provider
+credentials or external API calls are required by the new core tests.
+
+## Legacy provider isolation (Slice 1)
+
+ElevenLabs-specific session behavior now lives in
+`providers/legacy-elevenlabs-adapter.js`. The Presence application constructs a
+lazy adapter at startup and fetches the external SDK only when a live session is
+actually requested. A missing SDK can therefore fail a connection attempt
+without preventing the page, stored transcript, diagnostics, or mock route from
+initializing.
+
+## Independent text gateway foundation (Slice 2A)
+
+`providers/http-text-provider.js` and `gateway/text-protocol.js` define the
+independent text route without selecting or contacting a real model provider.
+Tests inject a fake Gateway and cover identity propagation, normalized errors,
+usage events, interruption, and HTTPS enforcement. The browser request contains
+no provider credential.
+
+The server contract and unresolved security decisions are documented in
+`conversation-gateway/README.md`. No Gateway host, production URL, provider,
+model, API key, or budget value has been configured.
