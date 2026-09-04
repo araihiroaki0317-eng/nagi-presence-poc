@@ -15,7 +15,7 @@ export function readBearerToken(request) {
   return match?.[1] || null;
 }
 
-function fixedTimeHexEqual(left, right) {
+export function fixedTimeHexEqual(left, right) {
   const a = String(left || '').toLowerCase();
   const b = String(right || '').toLowerCase();
   const length = Math.max(a.length, b.length, 64);

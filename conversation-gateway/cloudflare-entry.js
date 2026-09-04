@@ -3,6 +3,7 @@ import { handleWorkersAIProvider } from './workers-ai-provider.js';
 import { handleWorkersAICostEstimate } from './workers-ai-cost-estimator.js';
 import { InMemoryBudgetGuard } from './budget-guard.js';
 import { DurableBudgetStore } from './durable-budget-store.js';
+export { DeviceAuthLedger } from './device-auth-ledger.js';
 
 const ENVELOPE_LIMITS = Object.freeze({
   monthlyTurnLimit: 12,
@@ -34,10 +35,16 @@ function budgetBinding(env) {
   return env.BUDGET_LEDGER.getByName('env_workers_ai_baseline_2026_09_04_v1');
 }
 
+function deviceAuthBinding(env) {
+  if (!env.DEVICE_AUTH_LEDGER?.getByName) return null;
+  return env.DEVICE_AUTH_LEDGER.getByName('nagi-device-auth-v1');
+}
+
 export default {
   fetch(request, env) {
     return handleRequest(request, {
       ...env,
+      DEVICE_AUTH: deviceAuthBinding(env),
       BUDGET_GUARD: budgetBinding(env),
       COST_ESTIMATOR: {
         fetch: (input, init) => handleWorkersAICostEstimate(

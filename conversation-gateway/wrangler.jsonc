@@ -15,6 +15,10 @@
       {
         "name": "BUDGET_LEDGER",
         "class_name": "BudgetLedger"
+      },
+      {
+        "name": "DEVICE_AUTH_LEDGER",
+        "class_name": "DeviceAuthLedger"
       }
     ]
   },
@@ -22,6 +26,10 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["BudgetLedger"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["DeviceAuthLedger"]
     }
   ]
 }

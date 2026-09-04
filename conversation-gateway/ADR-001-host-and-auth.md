@@ -51,7 +51,7 @@ WebCrypto方式として別途設計する。
 
 ここでいう端末トークンはプロバイダーAPIキーではない。ただし認証情報ではあるため、ブラウザ保存の危険が消えるわけではない。影響範囲をGatewayだけに限定し、短期化・個別失効・予算上限で被害を制限する設計である。
 
-## Pairing flow（未実装）
+## Pairing flow（サーバー側ローカル実装済み）
 
 ```mermaid
 sequenceDiagram
@@ -65,6 +65,9 @@ sequenceDiagram
     G-->>C: 端末限定トークン
     C->>G: Text request
 ```
+
+The server-side redeem and verification flow is now implemented locally. The
+client pairing form and external Cloudflare configuration remain undeployed.
 
 ### ペアリングの安全条件
 

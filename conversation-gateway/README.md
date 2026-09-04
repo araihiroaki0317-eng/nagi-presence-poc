@@ -94,11 +94,28 @@ The accompanying tests use a fake device credential and in-memory bindings.
 Gateway-only token may live in `sessionStorage` for at most eight hours, has no
 automatic renewal, and is removed when expired. `providers/http-text-provider.js`
 reads it at request time and fails before network use if it is absent. Pairing
-and token issuance remain intentionally unimplemented.
+and token issuance are implemented locally through `POST /v1/pairing/redeem`
+and the `DeviceAuthLedger` Durable Object. No pairing UI has been added yet.
+
+The pairing deployment requires three server-side values:
+
+- `PAIRING_CODE_SHA256`: SHA-256 of the one-time code, stored as a secret
+- `PAIRING_CODE_ISSUED_AT`: ISO timestamp for issuance
+- `PAIRING_CODE_EXPIRES_AT`: ISO timestamp no more than ten minutes later
+
+The code becomes unusable after one successful redemption or five failed
+attempts. The ledger stores only code and token digests. A redeemed token lasts
+eight hours, cannot refresh itself, and is checked before budget authorization
+or Workers AI execution.
 
 ## Deployable evaluation Worker
 
-`cloudflare-entry.js` composes the public Gateway, Workers AI provider, cost estimator, and a SQLite-backed Durable Object budget ledger in one Worker. `wrangler.jsonc` declares the AI and Durable Object bindings. The device token hash remains a Cloudflare secret named `DEVICE_TOKEN_SHA256`; it is intentionally absent from source control.
+`cloudflare-entry.js` composes the public Gateway, Workers AI provider, cost
+estimator, SQLite-backed budget ledger, and device-auth ledger in one Worker.
+`wrangler.jsonc` declares the AI and Durable Object bindings. Pairing code
+material and timestamps remain server-side configuration and are intentionally
+absent from source control. The static `DEVICE_TOKEN_SHA256` path remains only
+as a local/test compatibility fallback when no device-auth binding is present.
 
 The evaluation configuration is bounded to 12 total requests, one request per case conversation, 300 maximum output units, and USD 0.01 reserved cost. Deployment is not authorized by the provider-use envelope and remains a separate external change.
 

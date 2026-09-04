@@ -1,5 +1,5 @@
 import { TEXT_GATEWAY_SCHEMA_VERSION } from '../gateway/text-protocol.js';
-import { verifyDeviceToken } from './auth.js';
+import { readBearerToken, verifyDeviceToken } from './auth.js';
 
 const MAX_MESSAGE_CHARACTERS = 2000;
 const MAX_CONTEXT_CHARACTERS = 12000;
@@ -18,6 +18,7 @@ function json(payload, status, origin, allowedOrigin) {
     status,
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
       ...cors(origin, allowedOrigin),
     },
   });
@@ -75,6 +76,24 @@ async function commitReservation(binding, reservationId, usage) {
   }
 }
 
+async function verifyDeviceAuthorization(request, env) {
+  if (!env.DEVICE_AUTH?.fetch) return verifyDeviceToken(request, env.DEVICE_TOKEN_SHA256);
+  const token = readBearerToken(request);
+  if (!token) return { ok: false, reason: 'device_token_required' };
+  try {
+    const response = await env.DEVICE_AUTH.fetch('https://auth.internal/verify', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    let payload = null;
+    try { payload = await response.json(); } catch {}
+    if (response.ok && payload?.ok === true) return { ok: true };
+    return { ok: false, reason: payload?.reason || 'device_token_invalid' };
+  } catch {
+    return { ok: false, reason: 'device_auth_unavailable', unavailable: true };
+  }
+}
+
 export async function handleRequest(request, env = {}) {
   const allowedOrigin = String(env.ALLOWED_ORIGIN || '').trim();
   const origin = request.headers.get('Origin') || '';
@@ -90,6 +109,28 @@ export async function handleRequest(request, env = {}) {
   }
 
   const url = new URL(request.url);
+  if (request.method === 'POST' && url.pathname === '/v1/pairing/redeem') {
+    if (!env.DEVICE_AUTH?.fetch) {
+      return error('pairing_not_configured', 'Pairing is not configured.', false, 503, origin, allowedOrigin);
+    }
+    const body = await readJson(request);
+    const code = String(body?.code || '').trim();
+    if (code.length < 6 || code.length > 128 || /\s/.test(code)) {
+      return error('pairing_code_invalid', 'Pairing code is invalid.', false, 400, origin, allowedOrigin);
+    }
+    try {
+      const paired = await env.DEVICE_AUTH.fetch('https://auth.internal/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      let payload = null;
+      try { payload = await paired.json(); } catch {}
+      return json(payload || { error: { code: 'pairing_response_invalid' } }, paired.status, origin, allowedOrigin);
+    } catch {
+      return error('device_auth_unavailable', 'Device authorization is unavailable.', true, 503, origin, allowedOrigin);
+    }
+  }
   if (request.method === 'GET' && url.pathname === '/health') {
     return json({
       ok: true,
@@ -97,7 +138,7 @@ export async function handleRequest(request, env = {}) {
       provider_configured: Boolean(env.TEXT_PROVIDER?.fetch),
       budget_guard_configured: Boolean(env.BUDGET_GUARD?.fetch),
       cost_estimator_configured: Boolean(env.COST_ESTIMATOR?.fetch),
-      device_auth_configured: Boolean(env.DEVICE_TOKEN_SHA256),
+      device_auth_configured: Boolean(env.DEVICE_AUTH?.fetch || env.DEVICE_TOKEN_SHA256),
     }, 200, origin, allowedOrigin);
   }
 
@@ -105,10 +146,17 @@ export async function handleRequest(request, env = {}) {
     return error('not_found', 'Endpoint not found.', false, 404, origin, allowedOrigin);
   }
 
-  const auth = await verifyDeviceToken(request, env.DEVICE_TOKEN_SHA256);
+  const auth = await verifyDeviceAuthorization(request, env);
   if (!auth.ok) {
     const notConfigured = auth.reason === 'device_auth_not_configured';
-    return error(auth.reason, 'Device authorization failed.', false, notConfigured ? 503 : 401, origin, allowedOrigin);
+    return error(
+      auth.reason,
+      'Device authorization failed.',
+      auth.unavailable === true,
+      notConfigured || auth.unavailable === true ? 503 : 401,
+      origin,
+      allowedOrigin,
+    );
   }
 
   const body = await readJson(request);
