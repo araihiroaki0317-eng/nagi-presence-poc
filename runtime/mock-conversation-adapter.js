@@ -2,9 +2,10 @@ import { ConversationCore } from './conversation-core.js';
 import { MockConversationProvider } from '../providers/mock-provider.js';
 import { routeForProfile as defaultRouteForProfile } from './conversation-profile.js';
 
-export class MockConversationAdapter {
-  constructor({ routeForProfile = defaultRouteForProfile, eventSink = () => {}, provider = new MockConversationProvider() } = {}) {
+export class ProviderConversationAdapter {
+  constructor({ routeForProfile = defaultRouteForProfile, eventSink = () => {}, provider } = {}) {
     if (typeof routeForProfile !== 'function') throw new Error('route_for_profile_required');
+    if (!provider) throw new Error('conversation_provider_required');
     this.routeForProfile = routeForProfile;
     this.callbacks = null;
     this.profile = null;
@@ -38,7 +39,10 @@ export class MockConversationAdapter {
       this.callbacks.onModeChange?.({ mode: 'listening' });
     }
     if (event.type === 'response.failed') {
-      this.callbacks.onError?.(new Error(event.payload?.error || 'mock_response_failed'));
+      const error = new Error(event.payload?.error || 'provider_response_failed');
+      error.code = event.payload?.code || 'provider_response_failed';
+      error.retryable = event.payload?.retryable === true;
+      this.callbacks.onError?.(error);
     }
     if (event.type === 'budget.soft_limit') {
       this.callbacks.onBudget?.(event);
@@ -73,6 +77,10 @@ export class MockConversationAdapter {
     return this;
   }
 
+  retryPendingInput() {
+    return this.core.retryPendingInput();
+  }
+
   getId() {
     return this.core.snapshot().conversation_id;
   }
@@ -84,5 +92,11 @@ export class MockConversationAdapter {
     this.callbacks = null;
     callbacks?.onStatusChange?.({ status: 'disconnected' });
     callbacks?.onDisconnect?.({ reason: 'mock_session_ended' });
+  }
+}
+
+export class MockConversationAdapter extends ProviderConversationAdapter {
+  constructor(options = {}) {
+    super({ ...options, provider: options.provider || new MockConversationProvider() });
   }
 }

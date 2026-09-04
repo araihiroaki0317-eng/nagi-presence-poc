@@ -4,19 +4,25 @@ import {
   CONVERSATION_PROFILES,
   LazyElevenLabsConversationAdapter,
   MockConversationAdapter,
+  ProviderConversationAdapter,
 } from './runtime/conversation-adapter.js';
 import { LocalTranscriptStore, transcriptContext } from './runtime/transcript.js';
 import { budgetNoticeFromError, budgetNoticeFromEvent } from './runtime/budget-notice.js';
 import { RouteAccessController } from './runtime/route-access.js';
 import { selectFallbackRoute } from './runtime/fallback-router.js';
 import { MockConversationProvider } from './providers/mock-provider.js';
+import { HttpTextConversationProvider } from './providers/http-text-provider.js';
+import { GatewayPairingClient } from './providers/gateway-pairing-client.js';
+import { GatewaySessionTokenStore } from './runtime/session-token-store.js';
 
 const AGENT_ID = 'agent_8501m0nvtj12ea5vnc21ck26v9sp';
 const BASE = './assets/';
 const RESUME_KEY = 'nagi.m3a.resume.v1';
 const SPEAKING_RELEASE_MS = 1000;
 const MOCK_MODE = new URLSearchParams(location.search).get('mock') === '1';
+const GATEWAY_URL = document.querySelector('meta[name="nagi-gateway-url"]')?.content.trim() || '';
 const ACTIVE_PAID_ROUTE_ID = 'legacy-elevenlabs';
+const GATEWAY_TEXT_ROUTE_ID = 'gateway-text';
 const FREE_TEXT_ROUTE_ID = 'mock-free-text';
 const CORE_LIFECYCLE_EVENTS = new Set([
   'provider_connect_started',
@@ -69,6 +75,11 @@ const exportLogBtn = byId('exportLog');
 const budgetNoticeEl = byId('budgetNotice');
 const budgetMessageEl = byId('budgetMessage');
 const budgetDismissBtn = byId('budgetDismiss');
+const pairingPanel = byId('pairingPanel');
+const pairingCode = byId('pairingCode');
+const pairingSubmit = byId('pairingSubmit');
+const pairingCancel = byId('pairingCancel');
+const pairingStatus = byId('pairingStatus');
 
 const checkpointStore = new LocalStorageCheckpointStore();
 const transcriptStore = new LocalTranscriptStore();
@@ -80,28 +91,45 @@ const routeRegistry = MOCK_MODE ? [{
   priority: 1,
   input_channels: ['text'],
   output_channels: ['text'],
+}] : GATEWAY_URL ? [{
+  route_id: GATEWAY_TEXT_ROUTE_ID,
+  available: true,
+  billing: 'metered',
+  priority: 1,
+  input_channels: ['text'],
+  output_channels: ['text'],
 }] : [];
-let adapter;
-if (MOCK_MODE) {
-  adapter = new MockConversationAdapter({
-    eventSink: event => {
-      if (!CORE_LIFECYCLE_EVENTS.has(event.type)) return;
-      return runtimeEvent(event.type, {
-        session_id: sessionId,
-        input_channel: event.input_channel,
-        output_channel: event.output_channels?.join('+') || null,
-        metadata: {
-          conversation_id: event.conversation_id,
-          provider_id: event.provider_id,
-          provider_session_id: event.provider_session_id || null,
-          reason: event.reason || null,
-        },
-      });
+
+const coreEventSink = event => {
+  if (!CORE_LIFECYCLE_EVENTS.has(event.type)) return;
+  return runtimeEvent(event.type, {
+    session_id: sessionId,
+    input_channel: event.input_channel,
+    output_channel: event.output_channels?.join('+') || null,
+    metadata: {
+      conversation_id: event.conversation_id,
+      provider_id: event.provider_id,
+      provider_session_id: event.provider_session_id || null,
+      reason: event.reason || null,
     },
   });
-} else {
-  adapter = new LazyElevenLabsConversationAdapter({ agentId: AGENT_ID });
-}
+};
+
+const mockAdapter = MOCK_MODE ? new MockConversationAdapter({ eventSink: coreEventSink }) : null;
+const voiceAdapter = MOCK_MODE ? null : new LazyElevenLabsConversationAdapter({ agentId: AGENT_ID });
+const gatewayTokenStore = GATEWAY_URL ? new GatewaySessionTokenStore() : null;
+const gatewayAdapter = GATEWAY_URL ? new ProviderConversationAdapter({
+  eventSink: coreEventSink,
+  provider: new HttpTextConversationProvider({
+    gatewayUrl: GATEWAY_URL,
+    accessTokenProvider: () => gatewayTokenStore.getToken(),
+  }),
+}) : null;
+const pairingClient = GATEWAY_URL ? new GatewayPairingClient({
+  gatewayUrl: GATEWAY_URL,
+  tokenStore: gatewayTokenStore,
+}) : null;
+let adapter = mockAdapter || voiceAdapter;
 
 let loadSeq = 0;
 let lastMode = '';
@@ -118,6 +146,9 @@ let sessionId = null;
 let turnNumber = 0;
 let unreadCount = 0;
 let resumable = localStorage.getItem(RESUME_KEY) === '1';
+let currentRouteId = MOCK_MODE ? FREE_TEXT_ROUTE_ID : ACTIVE_PAID_ROUTE_ID;
+let pendingPairingProfile = null;
+let retryPendingAfterPairing = false;
 const revealTimers = new Map();
 
 const safe = value => {
@@ -135,6 +166,55 @@ function debug(type, data = '') {
 function setStatus(text, kind = '') {
   statusEl.textContent = text;
   statusEl.className = 'status' + (kind ? ' ' + kind : '');
+}
+
+function isGatewayProfile(profile) {
+  return Boolean(gatewayAdapter && profile === CONVERSATION_PROFILES.TEXT_SILENT);
+}
+
+function adapterForProfile(profile) {
+  if (MOCK_MODE) return mockAdapter;
+  return isGatewayProfile(profile) ? gatewayAdapter : voiceAdapter;
+}
+
+function routeIdForProfile(profile) {
+  if (MOCK_MODE) return FREE_TEXT_ROUTE_ID;
+  return isGatewayProfile(profile) ? GATEWAY_TEXT_ROUTE_ID : ACTIVE_PAID_ROUTE_ID;
+}
+
+function isDeviceAuthError(error) {
+  return ['device_token_required', 'device_token_invalid', 'device_token_expired']
+    .includes(String(error?.code || ''));
+}
+
+function pairingErrorMessage(error) {
+  const code = String(error?.code || '');
+  if (code === 'pairing_code_invalid') return 'コードが違うようです。確認して、もう一度入力してください。';
+  if (code === 'pairing_code_expired') return 'このコードは期限切れです。新しいコードが必要です。';
+  if (code === 'pairing_code_used') return 'このコードは使用済みです。新しいコードが必要です。';
+  if (code === 'pairing_locked') return '試行回数の上限に達しました。新しいコードが必要です。';
+  return '接続できませんでした。少し待ってから確認してください。';
+}
+
+function requestPairing(profile = CONVERSATION_PROFILES.TEXT_SILENT, retryPending = false) {
+  if (!pairingClient) return false;
+  pendingPairingProfile = profile;
+  retryPendingAfterPairing = retryPending;
+  pairingPanel.hidden = false;
+  pairingStatus.textContent = '10分以内に発行された一回限りコードを入力してください。';
+  conversationPanel.open = true;
+  setStatus('chat: pairing required');
+  requestAnimationFrame(() => pairingCode.focus());
+  return true;
+}
+
+function hidePairing() {
+  pairingPanel.hidden = true;
+  pairingCode.value = '';
+  pairingStatus.textContent = '';
+  pairingSubmit.disabled = false;
+  pendingPairingProfile = null;
+  retryPendingAfterPairing = false;
 }
 
 function textFallbackSelection() {
@@ -175,7 +255,7 @@ function showBudgetNotice(notice) {
   budgetDismissBtn.textContent = notice.severity === 'hard' ? '閉じる' : '確認';
   if (notice.severity === 'hard') {
     routeAccess.lockRoute({
-      routeId: ACTIVE_PAID_ROUTE_ID,
+      routeId: currentRouteId,
       reason: notice.reasons[0] || notice.code,
       sourceEventId: sessionId,
     });
@@ -223,11 +303,12 @@ function selectedTextProfile() {
 function updateControls() {
   const active = adapter.active || connecting;
   const paidRouteBlocked = !routeAccess.canUse(ACTIVE_PAID_ROUTE_ID);
+  const textRouteBlocked = !routeAccess.canUse(routeIdForProfile(selectedTextProfile()));
   const textFallbackAvailable = Boolean(textFallbackSelection().route);
   startVoiceBtn.disabled = connecting || paidRouteBlocked;
-  startTextBtn.disabled = connecting || (paidRouteBlocked && !textFallbackAvailable);
+  startTextBtn.disabled = connecting || (textRouteBlocked && !textFallbackAvailable);
   stopBtn.disabled = !active;
-  sendTextBtn.disabled = connecting || (paidRouteBlocked && !textFallbackAvailable);
+  sendTextBtn.disabled = connecting || (textRouteBlocked && !textFallbackAvailable);
   startVoiceBtn.classList.toggle('active', currentProfile === CONVERSATION_PROFILES.VOICE);
   startTextBtn.classList.toggle('active', currentProfile === CONVERSATION_PROFILES.TEXT_AUDIO || currentProfile === CONVERSATION_PROFILES.TEXT_SILENT);
   startVoiceBtn.textContent = currentProfile && currentProfile !== CONVERSATION_PROFILES.VOICE ? '🎙 声に切り替える' : '🎙 声で話す';
@@ -487,6 +568,7 @@ function statusForProfile(profile) {
 
 function friendlyError(error) {
   const message = String(error?.message || error || '').toLowerCase();
+  if (isDeviceAuthError(error)) return '文字会話の接続を確認してください。';
   if (message.includes('permission') || message.includes('notallowed')) return 'マイクの使用が許可されていません。';
   if (message.includes('credit') || message.includes('quota')) return '利用枠を確認してください。';
   if (message.includes('override')) return '文字会話の設定がまだ許可されていません。';
@@ -547,6 +629,10 @@ function callbacksFor(profile, isResume) {
     onError: error => {
       debug('ERROR', error);
       runtimeEvent('runtime_error', { session_id: sessionId, processing_status: 'failed', error: error?.message || safe(error) });
+      if (currentRouteId === GATEWAY_TEXT_ROUTE_ID && isDeviceAuthError(error)) {
+        gatewayTokenStore?.clear();
+        requestPairing(profile, true);
+      }
       setStatus(friendlyError(error), 'error');
       showBudgetNotice(budgetNoticeFromError(error));
     },
@@ -579,13 +665,21 @@ async function endConversation(reason = 'manual_stop', preserve = true) {
 }
 
 async function startConversation(profile) {
-  if (!routeAccess.canUse(ACTIVE_PAID_ROUTE_ID)
+  const targetAdapter = adapterForProfile(profile);
+  const targetRouteId = routeIdForProfile(profile);
+  if (targetAdapter === gatewayAdapter && !gatewayTokenStore.getToken()) {
+    requestPairing(profile, false);
+    return false;
+  }
+  if (!routeAccess.canUse(targetRouteId)
     && !(profile === CONVERSATION_PROFILES.TEXT_SILENT && textFallbackSelection().route)) {
     setStatus('paid route: paused', 'error');
     return false;
   }
-  if (adapter.active && currentProfile === profile) return true;
+  if (adapter === targetAdapter && adapter.active && currentProfile === profile) return true;
   if (adapter.active) await endConversation('channel_switch', true);
+  adapter = targetAdapter;
+  currentRouteId = targetRouteId;
 
   const isResume = resumable || transcriptStore.read().length > 0;
   const priorContext = isResume ? contextForResume() : '';
@@ -622,6 +716,10 @@ async function startConversation(profile) {
     setStatus(friendlyError(error), 'error');
     connecting = false;
     currentProfile = null;
+    if (targetAdapter === gatewayAdapter && isDeviceAuthError(error)) {
+      gatewayTokenStore.clear();
+      requestPairing(profile, false);
+    }
     updateControls();
     renderState('neutral', 'start failed');
     return false;
@@ -642,6 +740,11 @@ async function sendTypedMessage(text) {
   try {
     await adapter.sendText(value);
   } catch (error) {
+    if (currentRouteId === GATEWAY_TEXT_ROUTE_ID && isDeviceAuthError(error)) {
+      gatewayTokenStore.clear();
+      requestPairing(CONVERSATION_PROFILES.TEXT_SILENT, true);
+      return;
+    }
     const notice = budgetNoticeFromError(error);
     if (notice) showBudgetNotice(notice);
     else throw error;
@@ -691,6 +794,57 @@ conversationPanel.addEventListener('toggle', () => {
 });
 
 budgetDismissBtn.addEventListener('click', hideBudgetNotice);
+
+pairingPanel.addEventListener('submit', async event => {
+  event.preventDefault();
+  if (!pairingClient) return;
+  const profile = pendingPairingProfile || CONVERSATION_PROFILES.TEXT_SILENT;
+  const shouldRetry = retryPendingAfterPairing;
+  pairingSubmit.disabled = true;
+  pairingStatus.textContent = '接続を確認しています…';
+  let result;
+  try {
+    result = await pairingClient.redeem(pairingCode.value);
+  } catch (error) {
+    pairingCode.value = '';
+    pairingSubmit.disabled = false;
+    pairingStatus.textContent = pairingErrorMessage(error);
+    runtimeEvent('device_pairing_failed', {
+      session_id: sessionId,
+      processing_status: 'failed',
+      metadata: { route_id: GATEWAY_TEXT_ROUTE_ID, code: error?.code || 'pairing_failed' },
+    });
+    pairingCode.focus();
+    return;
+  }
+
+  pairingCode.value = '';
+  pairingPanel.hidden = true;
+  pairingStatus.textContent = '';
+  pairingSubmit.disabled = false;
+  pendingPairingProfile = null;
+  retryPendingAfterPairing = false;
+  runtimeEvent('device_pairing_completed', {
+    session_id: sessionId,
+    metadata: { route_id: GATEWAY_TEXT_ROUTE_ID, expires_at: result.expires_at },
+  });
+  try {
+    if (shouldRetry && gatewayAdapter.active) {
+      setStatus('chat: reconnected', 'live');
+      await gatewayAdapter.retryPendingInput();
+    } else {
+      await startConversation(profile);
+    }
+  } catch (error) {
+    debug('PAIRING_RESUME_FAILED', error?.message || error);
+    setStatus(friendlyError(error), 'error');
+  }
+});
+
+pairingCancel.addEventListener('click', () => {
+  hidePairing();
+  setStatus('conversation: disconnected');
+});
 
 inspectLogBtn.addEventListener('click', async () => {
   const events = await eventLog.list();

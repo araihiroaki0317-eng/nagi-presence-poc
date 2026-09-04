@@ -9,6 +9,7 @@ import {
   ElevenLabsConversationAdapter,
   LazyElevenLabsConversationAdapter,
   MockConversationAdapter,
+  ProviderConversationAdapter,
   routeForProfile,
   sessionOptionsFor,
 } from '../runtime/conversation-adapter.js';
@@ -16,6 +17,7 @@ import { normalizeChannelRoute } from '../runtime/channel-route.js';
 import { ConversationCore } from '../runtime/conversation-core.js';
 import { MockConversationProvider } from '../providers/mock-provider.js';
 import { HttpTextConversationProvider } from '../providers/http-text-provider.js';
+import { GatewayPairingClient } from '../providers/gateway-pairing-client.js';
 import {
   createTextGatewayRequest,
   parseTextGatewayResponse,
@@ -385,6 +387,53 @@ test('session token store expires credentials and caps lifetime at eight hours',
   assert.equal(values.size, 0);
 });
 
+test('pairing client stores the issued token without returning or logging it', async () => {
+  const saved = [];
+  let requestBody;
+  const client = new GatewayPairingClient({
+    gatewayUrl: 'https://gateway.example.test',
+    tokenStore: {
+      save(value) {
+        saved.push(value);
+        return { expires_at: value.expiresAt };
+      },
+    },
+    fetchImpl: async (_url, options) => {
+      requestBody = JSON.parse(options.body);
+      return Response.json({
+        token: 'issued-device-token',
+        expires_at: '2026-09-04T08:00:00.000Z',
+      });
+    },
+  });
+
+  const result = await client.redeem('pair-123456');
+  assert.deepEqual(requestBody, { code: 'pair-123456' });
+  assert.deepEqual(result, { expires_at: '2026-09-04T08:00:00.000Z' });
+  assert.equal(JSON.stringify(result).includes('issued-device-token'), false);
+  assert.equal(saved[0].token, 'issued-device-token');
+});
+
+test('generic provider adapter carries gateway error identity to the UI boundary', async () => {
+  const provider = new MockConversationProvider({ scheduler: callback => callback() });
+  provider.sendTurn = async ({ turnId }) => {
+    provider.emit({
+      type: 'response.failed', turn_id: turnId,
+      payload: { error: 'Token expired.', code: 'device_token_expired', retryable: false },
+    });
+    const error = new Error('Token expired.');
+    error.code = 'device_token_expired';
+    throw error;
+  };
+  let receivedError;
+  const adapter = new ProviderConversationAdapter({ provider });
+  await adapter.start(CONVERSATION_PROFILES.TEXT_SILENT, {
+    onError: error => { receivedError = error; },
+  });
+  await assert.rejects(adapter.sendText('認証を確認'));
+  assert.equal(receivedError.code, 'device_token_expired');
+});
+
 test('HTTP text provider sends only the gateway device credential', async () => {
   const events = [];
   let captured;
@@ -567,11 +616,16 @@ test('Presence UI exposes text fallback only when an available route is register
   ]);
   assert.match(html, /id="budgetNotice"[^>]*role="status"[^>]*aria-live="polite"/);
   assert.match(html, /id="budgetMessage"/);
+  assert.match(html, /name="nagi-gateway-url" content=""/);
+  assert.match(html, /id="pairingPanel"[^>]*hidden/);
+  assert.match(html, /id="pairingCode"[^>]*autocomplete="one-time-code"/);
   assert.doesNotMatch(html, /id="budgetContinueText"/);
   assert.match(app, /routeAccess\.lockRoute/);
   assert.match(app, /const routeRegistry = MOCK_MODE \?/);
+  assert.match(app, /const gatewayAdapter = GATEWAY_URL \?/);
+  assert.match(app, /new GatewaySessionTokenStore\(\)/);
   assert.match(app, /const textFallbackAvailable = Boolean\(textFallbackSelection\(\)\.route\)/);
-  assert.match(app, /sendTextBtn\.disabled = connecting \|\| \(paidRouteBlocked && !textFallbackAvailable\)/);
+  assert.match(app, /sendTextBtn\.disabled = connecting \|\| \(textRouteBlocked && !textFallbackAvailable\)/);
   assert.match(app, /conversation: continued in text/);
 });
 

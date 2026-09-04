@@ -95,7 +95,9 @@ Gateway-only token may live in `sessionStorage` for at most eight hours, has no
 automatic renewal, and is removed when expired. `providers/http-text-provider.js`
 reads it at request time and fails before network use if it is absent. Pairing
 and token issuance are implemented locally through `POST /v1/pairing/redeem`
-and the `DeviceAuthLedger` Durable Object. No pairing UI has been added yet.
+and the `DeviceAuthLedger` Durable Object. The Presence pairing form and HTTP
+text route remain dormant until the `nagi-gateway-url` meta value receives an
+explicit deployment URL.
 
 The pairing deployment requires three server-side values:
 

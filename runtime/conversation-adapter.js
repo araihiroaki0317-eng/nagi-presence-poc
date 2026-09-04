@@ -4,7 +4,7 @@ export {
   routeForProfile,
   sessionOptionsFor,
 } from './conversation-profile.js';
-export { MockConversationAdapter } from './mock-conversation-adapter.js';
+export { MockConversationAdapter, ProviderConversationAdapter } from './mock-conversation-adapter.js';
 export {
   LegacyElevenLabsConversationAdapter,
   LegacyElevenLabsConversationAdapter as ElevenLabsConversationAdapter,

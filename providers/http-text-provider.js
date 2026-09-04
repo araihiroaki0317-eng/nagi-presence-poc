@@ -5,7 +5,7 @@ import {
   TextGatewayError,
 } from '../gateway/text-protocol.js';
 
-function normalizeGatewayUrl(value) {
+export function normalizeGatewayUrl(value) {
   const url = String(value || '').trim().replace(/\/+$/, '');
   if (!url) throw new Error('gateway_url_required');
   if (!/^(https:\/\/|http:\/\/localhost(?::\d+)?(?:\/|$)|\/)/.test(url)) {

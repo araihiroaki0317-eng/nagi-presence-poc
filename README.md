@@ -108,6 +108,12 @@ The browser request contains only a short-lived Gateway device token, never a
 provider credential. `runtime/session-token-store.js` keeps that token in
 `sessionStorage`, caps its lifetime at eight hours, and removes expired values.
 
+The Presence page contains a dormant pairing form and independent text route.
+They are activated only when the `nagi-gateway-url` meta value is explicitly
+configured. With the default empty value, no Gateway request is possible and
+the existing voice/text behavior remains unchanged. Pairing codes and device
+tokens are never written to the Transcript, JSONL events, or diagnostic panel.
+
 The server contract and unresolved security decisions are documented in
 `conversation-gateway/README.md`. No Gateway host, production URL, provider,
 model, API key, or budget value has been configured.
