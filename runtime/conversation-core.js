@@ -122,6 +122,7 @@ export class ConversationCore {
 
   async submitInput({ type = 'text', content, channel = this.value.input_channel } = {}) {
     if (!this.active) throw new Error('conversation_not_started');
+    if (this.value.active_turn_id) throw new Error('turn_already_active');
     if (type !== 'text') throw new Error('input_type_not_implemented');
     const value = String(content || '').trim();
     if (!value) throw new Error('message_required');
@@ -136,10 +137,10 @@ export class ConversationCore {
         turnId,
         input: pendingInput,
       });
-      this.value.pending_input = null;
       return turnId;
     } catch (error) {
       this.value.active_turn_id = null;
+      this.value.pending_input = pendingInput;
       this._emit('turn_failed', { turn_id: turnId, error: error?.message || String(error) });
       throw error;
     }
@@ -150,8 +151,11 @@ export class ConversationCore {
       ...input,
       turn_id: input.turn_id || this.value.active_turn_id,
     };
-    if (event.type === 'response.completed' || event.type === 'response.failed') {
+    const terminal = event.type === 'response.completed' || event.type === 'response.failed';
+    const isCurrentTurn = !event.turn_id || event.turn_id === this.value.active_turn_id;
+    if (terminal && isCurrentTurn) {
       this.value.active_turn_id = null;
+      if (event.type === 'response.completed') this.value.pending_input = null;
     }
     this._emit(event.type || 'provider.event', event);
   }
@@ -184,6 +188,7 @@ export class ConversationCore {
   async retryPendingInput() {
     const pending = this.value.pending_input;
     if (!pending) return null;
+    this.value.pending_input = null;
     return this.submitInput(pending);
   }
 

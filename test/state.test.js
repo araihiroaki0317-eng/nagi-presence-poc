@@ -175,6 +175,24 @@ test('conversation core preserves one logical conversation across provider recon
   assert.ok(events.some(event => event.type === 'logical_conversation_resumed'));
 });
 
+test('conversation core rejects overlapping turns until the active response finishes', async () => {
+  let finishResponse;
+  const provider = new MockConversationProvider({
+    scheduler: callback => { finishResponse = callback; },
+  });
+  const core = new ConversationCore({ provider });
+
+  await core.start({ route: { inputChannel: 'text', outputChannels: ['text'] } });
+  const firstTurn = await core.submitInput({ content: '最初の発話' });
+  assert.equal(core.snapshot().active_turn_id, firstTurn);
+  assert.equal(core.snapshot().pending_input.content, '最初の発話');
+  await assert.rejects(core.submitInput({ content: '重ねて送る' }), /turn_already_active/);
+
+  finishResponse();
+  assert.equal(core.snapshot().active_turn_id, null);
+  assert.equal(core.snapshot().pending_input, null);
+});
+
 test('mock adapter runs through conversation core without an external SDK', async () => {
   const messages = [];
   const modes = [];

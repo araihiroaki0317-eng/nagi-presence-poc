@@ -120,6 +120,45 @@ test('gateway calls the provider only after local budget authorization', async (
   assert.equal(payload.gateway_budget.status, 'committed');
 });
 
+test('gateway never calls the provider twice for the same turn identity', async () => {
+  let providerCalls = 0;
+  const guard = new InMemoryBudgetGuard({
+    limits: {
+      monthlyTurnLimit: 10,
+      conversationTurnLimit: 10,
+      monthlyCharacterLimit: 10000,
+      conversationCharacterLimit: 10000,
+      monthlyCostHardLimitMicros: 10000,
+      conversationCostHardLimitMicros: 10000,
+    },
+  });
+  const env = await environment({
+    BUDGET_GUARD: guard,
+    TEXT_PROVIDER: {
+      async fetch(_url, options) {
+        providerCalls += 1;
+        const body = JSON.parse(options.body);
+        return Response.json({
+          schema_version: '0.1',
+          turn_id: body.turn_id,
+          output: { text: '一度だけ返します。' },
+          provider: { id: 'fake', model: 'fake-text' },
+          usage: { output_units: 5, cost_micros: 100 },
+        });
+      },
+    },
+  });
+
+  const first = await handleRequest(request('/v1/text/respond', { body: validBody() }), env);
+  const duplicate = await handleRequest(request('/v1/text/respond', { body: validBody() }), env);
+
+  assert.equal(first.status, 200);
+  assert.equal(duplicate.status, 409);
+  assert.equal((await duplicate.json()).error.code, 'duplicate_turn');
+  assert.equal(providerCalls, 1);
+  assert.equal(guard.snapshot().totals.committedTurns, 1);
+});
+
 test('gateway does not call a provider after budget denial', async () => {
   let providerCalled = false;
   const env = await environment({

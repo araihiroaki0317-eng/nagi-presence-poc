@@ -171,6 +171,17 @@ export async function handleRequest(request, env = {}) {
       { limit_reason: budget.payload?.reason || null },
     );
   }
+  if (budget.payload?.duplicate === true) {
+    return error(
+      'duplicate_turn',
+      'This turn was already authorized; the provider will not be called again.',
+      false,
+      409,
+      origin,
+      allowedOrigin,
+      { previous_status: budget.payload?.status || null },
+    );
+  }
   const reservationId = budget.payload?.reservation_id;
   if (!reservationId) {
     return error('budget_reservation_invalid', 'Budget reservation is invalid.', false, 503, origin, allowedOrigin);
