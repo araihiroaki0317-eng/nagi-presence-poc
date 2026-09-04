@@ -25,6 +25,10 @@ import { LocalTranscriptStore, transcriptContext } from '../runtime/transcript.j
 import { budgetNoticeFromError, budgetNoticeFromEvent } from '../runtime/budget-notice.js';
 import { RouteAccessController } from '../runtime/route-access.js';
 import { selectFallbackRoute } from '../runtime/fallback-router.js';
+import {
+  GatewaySessionTokenStore,
+  MAX_GATEWAY_SESSION_TTL_MS,
+} from '../runtime/session-token-store.js';
 
 test('current turn override expires deterministically', () => {
   const state = new NagiRuntimeState();
@@ -359,11 +363,34 @@ test('text gateway protocol preserves conversation and turn identity', () => {
   }, 'turn_1'), /gateway_turn_mismatch/);
 });
 
-test('HTTP text provider completes through an injected gateway without credentials', async () => {
+test('session token store expires credentials and caps lifetime at eight hours', () => {
+  let current = Date.parse('2026-09-04T00:00:00.000Z');
+  const values = new Map();
+  const storage = {
+    getItem: key => values.get(key) || null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: key => values.delete(key),
+  };
+  const store = new GatewaySessionTokenStore({ storage, now: () => current });
+  const expiresAt = current + MAX_GATEWAY_SESSION_TTL_MS;
+  assert.deepEqual(store.save({ token: 'session-device-token', expiresAt }), {
+    expires_at: '2026-09-04T08:00:00.000Z',
+  });
+  assert.equal(store.getToken(), 'session-device-token');
+  assert.throws(() => store.save({
+    token: 'too-long', expiresAt: current + MAX_GATEWAY_SESSION_TTL_MS + 1,
+  }), /device_token_ttl_exceeded/);
+  current = expiresAt;
+  assert.equal(store.getToken(), null);
+  assert.equal(values.size, 0);
+});
+
+test('HTTP text provider sends only the gateway device credential', async () => {
   const events = [];
   let captured;
   const provider = new HttpTextConversationProvider({
     gatewayUrl: 'https://gateway.example.test',
+    accessTokenProvider: () => 'session-device-token',
     fetchImpl: async (url, options) => {
       captured = { url, options, body: JSON.parse(options.body) };
       return {
@@ -395,14 +422,19 @@ test('HTTP text provider completes through an injected gateway without credentia
   assert.equal(captured.url, 'https://gateway.example.test/v1/text/respond');
   assert.equal(captured.body.conversation_id, 'conv_7');
   assert.equal(captured.body.context, '承認済み文脈');
-  assert.deepEqual(captured.options.headers, { 'Content-Type': 'application/json' });
+  assert.deepEqual(captured.options.headers, {
+    Authorization: 'Bearer session-device-token',
+    'Content-Type': 'application/json',
+  });
   assert.equal(events.find(event => event.type === 'usage').payload.input_units, 10);
   assert.equal(events.find(event => event.type === 'response.completed').payload.text, '文字経路で返答しました。');
+  assert.equal(JSON.stringify(events).includes('session-device-token'), false);
 });
 
 test('HTTP text provider normalizes gateway errors and supports interruption', async () => {
   const failedProvider = new HttpTextConversationProvider({
     gatewayUrl: '/gateway',
+    accessTokenProvider: () => 'session-device-token',
     fetchImpl: async () => ({
       ok: false,
       status: 429,
@@ -425,6 +457,7 @@ test('HTTP text provider normalizes gateway errors and supports interruption', a
   const interruptedEvents = [];
   const interruptedProvider = new HttpTextConversationProvider({
     gatewayUrl: 'http://localhost:8787',
+    accessTokenProvider: () => 'session-device-token',
     fetchImpl: async (_url, options) => new Promise((_resolve, reject) => {
       signal = options.signal;
       signal.addEventListener('abort', () => {
@@ -440,6 +473,7 @@ test('HTTP text provider normalizes gateway errors and supports interruption', a
     emit: event => interruptedEvents.push(event),
   });
   const pending = interruptedProvider.sendTurn({ turnId: 'turn_9', input: { content: '止める' } });
+  await Promise.resolve();
   assert.equal(interruptedProvider.interrupt({ turnId: 'turn_9' }), true);
   await assert.rejects(pending, error => error.code === 'turn_interrupted');
   assert.equal(signal.aborted, true);
@@ -450,6 +484,25 @@ test('HTTP text provider rejects insecure remote gateway URLs', () => {
   assert.throws(() => new HttpTextConversationProvider({
     gatewayUrl: 'http://public.example.test', fetchImpl: async () => {},
   }), /gateway_url_must_be_https_or_local/);
+});
+
+test('HTTP text provider fails before network use when the device token is absent', async () => {
+  let fetchCalled = false;
+  const provider = new HttpTextConversationProvider({
+    gatewayUrl: 'https://gateway.example.test',
+    accessTokenProvider: () => null,
+    fetchImpl: async () => { fetchCalled = true; },
+  });
+  await provider.connect({
+    conversationId: 'conv_auth',
+    route: { inputChannel: 'text', outputChannels: ['text'] },
+    emit: () => {},
+  });
+  await assert.rejects(
+    provider.sendTurn({ turnId: 'turn_auth', input: { content: '送信しない' } }),
+    error => error.code === 'device_token_required' && error.retryable === false,
+  );
+  assert.equal(fetchCalled, false);
 });
 
 test('budget notices distinguish warning from a stopped paid route', () => {
@@ -476,6 +529,7 @@ test('HTTP text provider emits a soft budget signal from a gateway response', as
   const events = [];
   const provider = new HttpTextConversationProvider({
     gatewayUrl: 'https://gateway.example.test',
+    accessTokenProvider: () => 'session-device-token',
     fetchImpl: async (_url, options) => {
       const body = JSON.parse(options.body);
       return {

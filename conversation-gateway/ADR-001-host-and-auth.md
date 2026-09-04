@@ -33,6 +33,13 @@
 
 PoCでは案Aを第一候補とする。
 
+### Approved PoC token-storage subdecision
+
+2026-09-04の明示承認により、初期クライアントはGateway専用トークンを
+`sessionStorage`へ保存し、有効期間を最大8時間に制限する。自動更新は行わず、
+期限切れまたはタブ終了後は再認証を必要とする。永続的な端末鍵は将来の
+WebCrypto方式として別途設計する。
+
 ### Aの認証境界
 
 1. プロバイダーAPIキーはWorkerのSecretとしてのみ保持する。
@@ -122,7 +129,7 @@ Gatewayの標準インフラログへ保存するもの：
 
 ## Open decisions
 
-1. 端末トークンの保存場所：メモリ / sessionStorage / IndexedDB
+1. 将来の永続端末鍵：WebCrypto / IndexedDB（PoCの短期トークンはsessionStorageで決定済み）
 2. トークン寿命と更新条件
 3. ペアリング管理画面の配置
 4. Worker側のトークン台帳：KV / D1 / Durable Object等

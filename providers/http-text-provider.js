@@ -20,7 +20,7 @@ async function readPayload(response) {
 }
 
 export class HttpTextConversationProvider {
-  constructor({ gatewayUrl, fetchImpl = globalThis.fetch } = {}) {
+  constructor({ gatewayUrl, accessTokenProvider, fetchImpl = globalThis.fetch } = {}) {
     if (typeof fetchImpl !== 'function') throw new Error('fetch_required');
     this.id = 'gateway-text';
     this.capabilities = Object.freeze({
@@ -32,6 +32,8 @@ export class HttpTextConversationProvider {
       usageEvents: true,
     });
     this.gatewayUrl = normalizeGatewayUrl(gatewayUrl);
+    if (typeof accessTokenProvider !== 'function') throw new Error('access_token_provider_required');
+    this.accessTokenProvider = accessTokenProvider;
     this.fetchImpl = fetchImpl;
     this.emit = null;
     this.context = '';
@@ -67,9 +69,19 @@ export class HttpTextConversationProvider {
     this.emit({ type: 'response.started', turn_id: turnId });
 
     try {
+      const accessToken = String(await this.accessTokenProvider() || '').trim();
+      if (!accessToken || /\s/.test(accessToken)) {
+        throw new TextGatewayError('device_token_required', 'A valid device token is required.', {
+          retryable: false,
+        });
+      }
+      controller.signal.throwIfAborted();
       const response = await this.fetchImpl(`${this.gatewayUrl}/v1/text/respond`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify(request),
         signal: controller.signal,
       });

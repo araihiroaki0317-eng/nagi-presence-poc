@@ -90,6 +90,12 @@ approved.
 
 The accompanying tests use a fake device credential and in-memory bindings.
 
+`runtime/session-token-store.js` implements the approved PoC client policy: a
+Gateway-only token may live in `sessionStorage` for at most eight hours, has no
+automatic renewal, and is removed when expired. `providers/http-text-provider.js`
+reads it at request time and fails before network use if it is absent. Pairing
+and token issuance remain intentionally unimplemented.
+
 ## Deployable evaluation Worker
 
 `cloudflare-entry.js` composes the public Gateway, Workers AI provider, cost estimator, and a SQLite-backed Durable Object budget ledger in one Worker. `wrangler.jsonc` declares the AI and Durable Object bindings. The device token hash remains a Cloudflare secret named `DEVICE_TOKEN_SHA256`; it is intentionally absent from source control.

@@ -103,8 +103,10 @@ initializing.
 `providers/http-text-provider.js` and `gateway/text-protocol.js` define the
 independent text route without selecting or contacting a real model provider.
 Tests inject a fake Gateway and cover identity propagation, normalized errors,
-usage events, interruption, and HTTPS enforcement. The browser request contains
-no provider credential.
+usage events, interruption, HTTPS enforcement, and Gateway device authorization.
+The browser request contains only a short-lived Gateway device token, never a
+provider credential. `runtime/session-token-store.js` keeps that token in
+`sessionStorage`, caps its lifetime at eight hours, and removes expired values.
 
 The server contract and unresolved security decisions are documented in
 `conversation-gateway/README.md`. No Gateway host, production URL, provider,
