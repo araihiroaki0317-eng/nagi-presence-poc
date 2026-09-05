@@ -149,6 +149,11 @@ let resumable = localStorage.getItem(RESUME_KEY) === '1';
 let currentRouteId = MOCK_MODE ? FREE_TEXT_ROUTE_ID : ACTIVE_PAID_ROUTE_ID;
 let pendingPairingProfile = null;
 let retryPendingAfterPairing = false;
+let pairingAttemptId = 0;
+let pairingRequestController = null;
+let sendingText = false;
+let draftRevision = 0;
+let pendingSubmittedDraft = null;
 const revealTimers = new Map();
 
 const safe = value => {
@@ -198,6 +203,7 @@ function pairingErrorMessage(error) {
 
 function requestPairing(profile = CONVERSATION_PROFILES.TEXT_SILENT, retryPending = false) {
   if (!pairingClient) return false;
+  invalidatePairingRequest();
   pendingPairingProfile = profile;
   retryPendingAfterPairing = retryPending;
   pairingPanel.hidden = false;
@@ -208,7 +214,14 @@ function requestPairing(profile = CONVERSATION_PROFILES.TEXT_SILENT, retryPendin
   return true;
 }
 
+function invalidatePairingRequest() {
+  pairingAttemptId += 1;
+  pairingRequestController?.abort();
+  pairingRequestController = null;
+}
+
 function hidePairing() {
+  invalidatePairingRequest();
   pairingPanel.hidden = true;
   pairingCode.value = '';
   pairingStatus.textContent = '';
@@ -641,6 +654,7 @@ function callbacksFor(profile, isResume) {
 }
 
 async function endConversation(reason = 'manual_stop', preserve = true) {
+  hidePairing();
   if (!adapter.active) return;
   ending = true;
   cancelListeningRelease(reason);
@@ -665,6 +679,7 @@ async function endConversation(reason = 'manual_stop', preserve = true) {
 }
 
 async function startConversation(profile) {
+  if (pairingRequestController) hidePairing();
   const targetAdapter = adapterForProfile(profile);
   const targetRouteId = routeIdForProfile(profile);
   if (targetAdapter === gatewayAdapter && !gatewayTokenStore.getToken()) {
@@ -726,32 +741,47 @@ async function startConversation(profile) {
   }
 }
 
-async function sendTypedMessage(text) {
-  const value = String(text || '').trim();
-  if (!value) return;
-  conversationPanel.open = true;
-  unreadCount = 0;
-  unreadEl.hidden = true;
-  if (!adapter.active) {
-    const started = await startConversation(selectedTextProfile());
-    if (!started) return;
-  }
-  await recordTurn({ role: 'user', text: value, source: 'typed' });
-  try {
-    await adapter.sendText(value);
-  } catch (error) {
-    if (currentRouteId === GATEWAY_TEXT_ROUTE_ID && isDeviceAuthError(error)) {
-      gatewayTokenStore.clear();
-      requestPairing(CONVERSATION_PROFILES.TEXT_SILENT, true);
-      return;
-    }
-    const notice = budgetNoticeFromError(error);
-    if (notice) showBudgetNotice(notice);
-    else throw error;
-  }
-  renderState('thinking', 'typed message sent');
+function clearSubmittedDraft(submitted) {
+  if (!submitted || draftRevision !== submitted.revision || textInput.value !== submitted.text) return;
   textInput.value = '';
   textInput.style.height = '';
+}
+
+async function sendTypedMessage(text) {
+  if (sendingText || connecting || !pairingPanel.hidden) return;
+  const value = String(text || '').trim();
+  if (!value) return;
+  const submitted = { text: textInput.value, revision: draftRevision };
+  sendingText = true;
+  try {
+    conversationPanel.open = true;
+    unreadCount = 0;
+    unreadEl.hidden = true;
+    if (!adapter.active) {
+      const started = await startConversation(selectedTextProfile());
+      if (!started) return;
+    }
+    await recordTurn({ role: 'user', text: value, source: 'typed' });
+    pendingSubmittedDraft = submitted;
+    renderState('thinking', 'typed message sending');
+    try {
+      await adapter.sendText(value);
+    } catch (error) {
+      if (currentRouteId === GATEWAY_TEXT_ROUTE_ID && isDeviceAuthError(error)) {
+        gatewayTokenStore.clear();
+        requestPairing(CONVERSATION_PROFILES.TEXT_SILENT, true);
+        return;
+      }
+      const notice = budgetNoticeFromError(error);
+      if (notice) showBudgetNotice(notice);
+      else throw error;
+      return;
+    }
+    clearSubmittedDraft(submitted);
+    pendingSubmittedDraft = null;
+  } finally {
+    sendingText = false;
+  }
 }
 
 startVoiceBtn.addEventListener('click', () => startConversation(CONVERSATION_PROFILES.VOICE));
@@ -769,6 +799,7 @@ replyWithVoice.addEventListener('change', () => {
 });
 
 textInput.addEventListener('input', () => {
+  draftRevision += 1;
   adapter.sendActivity();
   textInput.style.height = 'auto';
   textInput.style.height = `${Math.min(textInput.scrollHeight, 128)}px`;
@@ -797,15 +828,20 @@ budgetDismissBtn.addEventListener('click', hideBudgetNotice);
 
 pairingPanel.addEventListener('submit', async event => {
   event.preventDefault();
-  if (!pairingClient) return;
+  if (!pairingClient || pairingPanel.hidden || pairingRequestController) return;
+  const attemptId = ++pairingAttemptId;
+  const controller = new AbortController();
+  pairingRequestController = controller;
   const profile = pendingPairingProfile || CONVERSATION_PROFILES.TEXT_SILENT;
   const shouldRetry = retryPendingAfterPairing;
   pairingSubmit.disabled = true;
   pairingStatus.textContent = '接続を確認しています…';
   let result;
   try {
-    result = await pairingClient.redeem(pairingCode.value);
+    result = await pairingClient.redeem(pairingCode.value, { signal: controller.signal });
   } catch (error) {
+    if (attemptId !== pairingAttemptId || controller.signal.aborted) return;
+    pairingRequestController = null;
     pairingCode.value = '';
     pairingSubmit.disabled = false;
     pairingStatus.textContent = pairingErrorMessage(error);
@@ -818,6 +854,8 @@ pairingPanel.addEventListener('submit', async event => {
     return;
   }
 
+  if (attemptId !== pairingAttemptId || controller.signal.aborted) return;
+  pairingRequestController = null;
   pairingCode.value = '';
   pairingPanel.hidden = true;
   pairingStatus.textContent = '';
@@ -831,7 +869,14 @@ pairingPanel.addEventListener('submit', async event => {
   try {
     if (shouldRetry && gatewayAdapter.active) {
       setStatus('chat: reconnected', 'live');
-      await gatewayAdapter.retryPendingInput();
+      sendingText = true;
+      try {
+        await gatewayAdapter.retryPendingInput();
+        clearSubmittedDraft(pendingSubmittedDraft);
+        pendingSubmittedDraft = null;
+      } finally {
+        sendingText = false;
+      }
     } else {
       await startConversation(profile);
     }

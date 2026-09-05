@@ -4,6 +4,7 @@ import {
   parseTextGatewayResponse,
   TextGatewayError,
 } from '../gateway/text-protocol.js';
+import { transcriptContext } from '../runtime/transcript.js';
 
 export function normalizeGatewayUrl(value) {
   const url = String(value || '').trim().replace(/\/+$/, '');
@@ -37,6 +38,7 @@ export class HttpTextConversationProvider {
     this.fetchImpl = fetchImpl;
     this.emit = null;
     this.context = '';
+    this.history = [];
     this.conversationId = null;
     this.pending = new Map();
   }
@@ -49,6 +51,7 @@ export class HttpTextConversationProvider {
     }
     this.emit = emit;
     this.context = String(context || '');
+    this.history = [];
     this.conversationId = String(conversationId || '').trim();
     if (!this.conversationId) throw new Error('conversation_id_required');
     return { sessionId: null };
@@ -61,7 +64,7 @@ export class HttpTextConversationProvider {
     const request = createTextGatewayRequest({
       conversationId: this.conversationId,
       turnId,
-      context: this.context,
+      context: [this.context, transcriptContext(this.history)].filter(Boolean).join('\n\n'),
       input,
     });
     const controller = new AbortController();
@@ -88,6 +91,11 @@ export class HttpTextConversationProvider {
       const payload = await readPayload(response);
       if (!response.ok) throw errorFromGateway(response.status, payload);
       const result = parseTextGatewayResponse(payload, turnId);
+      this.history.push(
+        { role: 'user', text: String(input.content) },
+        { role: 'agent', text: result.text },
+      );
+      this.history = this.history.slice(-8);
       if (result.usage) {
         this.emit({ type: 'usage', turn_id: turnId, payload: result.usage });
       }

@@ -15,7 +15,8 @@ export class GatewayPairingClient {
     this.fetchImpl = fetchImpl;
   }
 
-  async redeem(code) {
+  async redeem(code, { signal } = {}) {
+    signal?.throwIfAborted();
     const value = String(code || '').trim();
     if (value.length < 6 || value.length > 128 || /\s/.test(value)) {
       throw new TextGatewayError('pairing_code_invalid', 'Pairing code is invalid.', {
@@ -26,8 +27,11 @@ export class GatewayPairingClient {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code: value }),
+      signal,
     });
     const payload = await readPayload(response);
+    // Cancellation may happen while the response body is being read.
+    signal?.throwIfAborted();
     if (!response.ok) throw errorFromGateway(response.status, payload);
     const token = String(payload?.token || '').trim();
     if (!token || /\s/.test(token) || !payload?.expires_at) {
