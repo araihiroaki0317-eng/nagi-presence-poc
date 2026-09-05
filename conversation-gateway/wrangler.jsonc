@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "nagi-conversation-gateway-eval",
+  "main": "cloudflare-entry.js",
+  "compatibility_date": "2026-09-04",
+  "ai": {
+    "binding": "AI"
+  },
+  "vars": {
+    "ALLOWED_ORIGIN": "https://araihiroaki0317-eng.github.io",
+    "WORKERS_AI_MODEL": "@cf/qwen/qwen3-30b-a3b-fp8"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "BUDGET_LEDGER",
+        "class_name": "BudgetLedger"
+      },
+      {
+        "name": "DEVICE_AUTH_LEDGER",
+        "class_name": "DeviceAuthLedger"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["BudgetLedger"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["DeviceAuthLedger"]
+    }
+  ]
+}
