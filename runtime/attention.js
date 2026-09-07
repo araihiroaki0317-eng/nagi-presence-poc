@@ -14,7 +14,7 @@ function normalizeWakeText(value) {
   return String(value || '')
     .trim()
     .replace(/[\s　]+/g, '')
-    .replace(/[、。！？!?…]+$/g, '')
+    .replace(/[、。！？!?….．]+$/g, '')
     .toLowerCase();
 }
 
