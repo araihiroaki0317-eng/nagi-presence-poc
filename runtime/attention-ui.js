@@ -3,10 +3,12 @@ import {
   ATTENTION_SEQUENCE,
   createAttentionAcknowledgement,
 } from './attention.js';
+import { createAttentionAudioPlayer } from './attention-audio.js';
 import { runtimeEvent } from './runtime.js';
 import { LocalTranscriptStore } from './transcript.js';
 
 const transcriptStore = new LocalTranscriptStore();
+const attentionAudio = createAttentionAudioPlayer();
 const composer = document.getElementById('composer');
 const textInput = document.getElementById('textInput');
 const conversationPanel = document.getElementById('conversationPanel');
@@ -180,6 +182,14 @@ async function acknowledgeTypedWake(transcript) {
   }
 
   setPresenceState('ATTENTION', 'ん？');
+  const audioResult = await attentionAudio.play();
+  debug('ATTENTION_AUDIO', audioResult.ok ? 'played' : audioResult);
+  await runtimeEvent(audioResult.ok ? 'attention_audio_played' : 'attention_audio_unavailable', {
+    speaker: 'nagi',
+    transcript: ATTENTION_ACKNOWLEDGEMENT,
+    output_channel: audioResult.ok ? 'audio' : 'text',
+    metadata: audioResult,
+  });
   await wait(LISTENING_HOLD_MS);
   setPresenceState('LISTENING', '聞いています。');
   return true;
