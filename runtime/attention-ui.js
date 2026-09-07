@@ -15,7 +15,14 @@ const transcriptEmpty = document.getElementById('transcriptEmpty');
 const stateEl = document.getElementById('state');
 const captionEl = document.getElementById('caption');
 const debugEl = document.getElementById('debug');
+const motionVideo = document.getElementById('motionVideo');
+const portraitA = document.getElementById('portraitA');
+const portraitB = document.getElementById('portraitB');
+const placeholder = document.getElementById('placeholder');
 
+const ATTENTION_VIDEO = './assets/nagi_attention_v2.mp4';
+const LISTENING_VIDEO = './assets/listening_loop_v02.MP4';
+const ATTENTION_FALLBACK_MS = 3600;
 const ATTENTION_STEP_MS = 180;
 const LISTENING_HOLD_MS = 700;
 
@@ -63,13 +70,56 @@ function setPresenceState(label, caption) {
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+function playVideoOnce(src) {
+  if (!motionVideo) return Promise.resolve(false);
+  portraitA?.classList.remove('visible');
+  portraitB?.classList.remove('visible');
+  if (placeholder) placeholder.hidden = true;
+  motionVideo.loop = false;
+  motionVideo.src = `${src}?v=attention-v01`;
+  motionVideo.currentTime = 0;
+  motionVideo.classList.add('visible');
+
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = ok => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      motionVideo.removeEventListener('ended', onEnded);
+      motionVideo.removeEventListener('error', onError);
+      resolve(ok);
+    };
+    const onEnded = () => finish(true);
+    const onError = () => finish(false);
+    const timer = setTimeout(() => finish(false), ATTENTION_FALLBACK_MS);
+    motionVideo.addEventListener('ended', onEnded, { once: true });
+    motionVideo.addEventListener('error', onError, { once: true });
+    motionVideo.play()?.catch?.(error => {
+      debug('ATTENTION_VIDEO_PLAY', error?.message || String(error));
+      finish(false);
+    });
+  });
+}
+
+function restoreListeningVideo() {
+  if (!motionVideo) return;
+  motionVideo.loop = true;
+  motionVideo.src = `${LISTENING_VIDEO}?v=attention-v01`;
+  motionVideo.currentTime = 0;
+  motionVideo.classList.add('visible');
+  motionVideo.play()?.catch?.(error => debug('LISTENING_VIDEO_PLAY', error?.message || String(error)));
+}
+
 async function playAttentionSequence(attention) {
+  setPresenceState('ATTENTION', '呼びかけに気づきました。');
+  const videoPromise = playVideoOnce(ATTENTION_VIDEO);
+
   for (const step of attention.sequence) {
     if (step === 'attention_start') setPresenceState('ATTENTION', '呼びかけに気づきました。');
     if (step === 'gaze') setPresenceState('ATTENTION', 'こちらを見ます。');
     if (step === 'head_up') setPresenceState('ATTENTION', '顔を上げます。');
     if (step === 'expression_soften') setPresenceState('ATTENTION', '少し表情がやわらぎます。');
-    if (step === 'listening') setPresenceState('LISTENING', '聞いています。');
 
     await runtimeEvent(step, {
       speaker: 'nagi',
@@ -79,6 +129,11 @@ async function playAttentionSequence(attention) {
     debug('ATTENTION', step);
     if (step !== 'listening') await wait(ATTENTION_STEP_MS);
   }
+
+  const playedToEnd = await videoPromise;
+  debug('ATTENTION_VIDEO_END', playedToEnd ? 'ended' : 'fallback');
+  restoreListeningVideo();
+  setPresenceState('LISTENING', '聞いています。');
 }
 
 async function acknowledgeTypedWake(transcript) {
