@@ -1,0 +1,142 @@
+name: Cloudflare Preview Status
+
+on:
+  push:
+    branches:
+      - '**'
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  report-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve Cloudflare preview for this commit
+        id: cloudflare
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CF_PROJECT_NAME: nagi-presence-poc
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CF_API_TOKEN}" ] || [ -z "${CF_ACCOUNT_ID}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Cloudflare read-only connection is not configured yet."
+            exit 0
+          fi
+
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+          api="https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/pages/projects/${CF_PROJECT_NAME}/deployments?env=preview&per_page=25"
+
+          found=""
+          for attempt in $(seq 1 30); do
+            response=$(curl --fail --silent --show-error \
+              -H "Authorization: Bearer ${CF_API_TOKEN}" \
+              -H "Content-Type: application/json" \
+              "$api")
+
+            success=$(jq -r '.success // false' <<<"$response")
+            if [ "$success" != "true" ]; then
+              echo "Cloudflare API returned an unsuccessful response."
+              jq -c '{errors, messages}' <<<"$response"
+              exit 1
+            fi
+
+            found=$(jq -c --arg sha "$GITHUB_SHA" \
+              '[.result[] | select(.deployment_trigger.metadata.commit_hash == $sha)][0] // empty' \
+              <<<"$response")
+
+            if [ -n "$found" ]; then
+              status=$(jq -r '.latest_stage.status // "unknown"' <<<"$found")
+              if [ "$status" = "success" ] || [ "$status" = "failure" ] || [ "$status" = "canceled" ]; then
+                break
+              fi
+            fi
+
+            sleep 5
+          done
+
+          if [ -z "$found" ]; then
+            echo "status=not_found" >> "$GITHUB_OUTPUT"
+            echo "url=" >> "$GITHUB_OUTPUT"
+            echo "short_id=" >> "$GITHUB_OUTPUT"
+            echo "branch=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          status=$(jq -r '.latest_stage.status // "unknown"' <<<"$found")
+          url=$(jq -r '.url // ""' <<<"$found")
+          short_id=$(jq -r '.short_id // ""' <<<"$found")
+          branch=$(jq -r '.deployment_trigger.metadata.branch // ""' <<<"$found")
+
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "short_id=$short_id" >> "$GITHUB_OUTPUT"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Find pull request for this commit
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          pr_number=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
+            --jq '[.[] | select(.state == "open")][0].number // empty')
+          echo "number=$pr_number" >> "$GITHUB_OUTPUT"
+
+      - name: Publish preview status to pull request
+        if: steps.cloudflare.outputs.configured == 'true' && steps.pr.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          CF_STATUS: ${{ steps.cloudflare.outputs.status }}
+          CF_URL: ${{ steps.cloudflare.outputs.url }}
+          CF_SHORT_ID: ${{ steps.cloudflare.outputs.short_id }}
+          CF_BRANCH: ${{ steps.cloudflare.outputs.branch }}
+        run: |
+          set -euo pipefail
+          marker='<!-- creo-cloudflare-preview-status -->'
+          short_sha="${GITHUB_SHA:0:7}"
+
+          case "$CF_STATUS" in
+            success) state='✅ success' ;;
+            failure) state='❌ failure' ;;
+            canceled) state='⚪ canceled' ;;
+            not_found) state='⚠️ deployment not found within polling window' ;;
+            *) state="⏳ ${CF_STATUS}" ;;
+          esac
+
+          if [ -n "$CF_URL" ]; then
+            url_line="Preview: ${CF_URL}"
+          else
+            url_line='Preview: unavailable'
+          fi
+
+          body=$(printf '%s\n### Cloudflare Preview\n- Commit: `%s`\n- Branch: `%s`\n- Status: %s\n- Deployment: `%s`\n- %s\n\n_Updated automatically from the Cloudflare Pages read-only API._' \
+            "$marker" "$short_sha" "$CF_BRANCH" "$state" "$CF_SHORT_ID" "$url_line")
+
+          existing_id=$(gh api "/repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq ".[] | select(.body | contains(\"${marker}\")) | .id" | head -n 1)
+
+          if [ -n "$existing_id" ]; then
+            gh api --method PATCH "/repos/${GITHUB_REPOSITORY}/issues/comments/${existing_id}" -f body="$body" >/dev/null
+          else
+            gh api --method POST "/repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" -f body="$body" >/dev/null
+          fi
+
+      - name: Connection setup note
+        if: steps.cloudflare.outputs.configured != 'true'
+        run: |
+          {
+            echo '### Cloudflare Preview Status'
+            echo 'Read-only API connection is not configured.'
+            echo 'Required repository settings:'
+            echo '- Actions secret: `CLOUDFLARE_API_TOKEN` (Cloudflare Pages Read only)'
+            echo '- Actions variable: `CLOUDFLARE_ACCOUNT_ID`'
+          } >> "$GITHUB_STEP_SUMMARY"
