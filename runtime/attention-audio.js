@@ -1,4 +1,4 @@
-export const ATTENTION_AUDIO_ASSET = './assets/nagi_ack_un.mp3';
+export const ATTENTION_AUDIO_ASSET = './assets/nagi_ack_v02_b_un.mp3';
 
 export function createAttentionAudioPlayer({ AudioCtor = globalThis.Audio, src = ATTENTION_AUDIO_ASSET } = {}) {
   return {
