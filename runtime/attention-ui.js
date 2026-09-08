@@ -26,6 +26,7 @@ const ATTENTION_VIDEO = './assets/nagi_attention_v2.mp4';
 const LISTENING_VIDEO = './assets/listening_loop_v02.MP4';
 const ATTENTION_FALLBACK_MS = 3600;
 const ATTENTION_STEP_MS = 180;
+const ATTENTION_AUDIO_DELAY_MS = 360;
 const LISTENING_HOLD_MS = 700;
 
 function debug(type, data = '') {
@@ -113,9 +114,23 @@ function restoreListeningVideo() {
   motionVideo.play()?.catch?.(error => debug('LISTENING_VIDEO_PLAY', error?.message || String(error)));
 }
 
+async function playAttentionAudio() {
+  await wait(ATTENTION_AUDIO_DELAY_MS);
+  setPresenceState('ATTENTION', 'ん？');
+  const audioResult = await attentionAudio.play();
+  debug('ATTENTION_AUDIO', audioResult.ok ? 'played' : audioResult);
+  await runtimeEvent(audioResult.ok ? 'attention_audio_played' : 'attention_audio_unavailable', {
+    speaker: 'nagi',
+    transcript: ATTENTION_ACKNOWLEDGEMENT,
+    output_channel: audioResult.ok ? 'audio' : 'text',
+    metadata: audioResult,
+  });
+}
+
 async function playAttentionSequence(attention) {
   setPresenceState('ATTENTION', '呼びかけに気づきました。');
   const videoPromise = playVideoOnce(ATTENTION_VIDEO);
+  const audioPromise = playAttentionAudio();
 
   for (const step of attention.sequence) {
     if (step === 'attention_start') setPresenceState('ATTENTION', '呼びかけに気づきました。');
@@ -132,7 +147,7 @@ async function playAttentionSequence(attention) {
     if (step !== 'listening') await wait(ATTENTION_STEP_MS);
   }
 
-  const playedToEnd = await videoPromise;
+  const [playedToEnd] = await Promise.all([videoPromise, audioPromise]);
   debug('ATTENTION_VIDEO_END', playedToEnd ? 'ended' : 'fallback');
   restoreListeningVideo();
   setPresenceState('LISTENING', '聞いています。');
@@ -163,8 +178,6 @@ async function acknowledgeTypedWake(transcript) {
     });
   }
 
-  await playAttentionSequence(attention);
-
   const agent = storeTurn({
     role: 'agent',
     text: ATTENTION_ACKNOWLEDGEMENT,
@@ -181,15 +194,7 @@ async function acknowledgeTypedWake(transcript) {
     });
   }
 
-  setPresenceState('ATTENTION', 'ん？');
-  const audioResult = await attentionAudio.play();
-  debug('ATTENTION_AUDIO', audioResult.ok ? 'played' : audioResult);
-  await runtimeEvent(audioResult.ok ? 'attention_audio_played' : 'attention_audio_unavailable', {
-    speaker: 'nagi',
-    transcript: ATTENTION_ACKNOWLEDGEMENT,
-    output_channel: audioResult.ok ? 'audio' : 'text',
-    metadata: audioResult,
-  });
+  await playAttentionSequence(attention);
   await wait(LISTENING_HOLD_MS);
   setPresenceState('LISTENING', '聞いています。');
   return true;
