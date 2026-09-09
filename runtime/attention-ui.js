@@ -22,11 +22,11 @@ const portraitA = document.getElementById('portraitA');
 const portraitB = document.getElementById('portraitB');
 const placeholder = document.getElementById('placeholder');
 
-const ATTENTION_VIDEO = './assets/nagi_attention_v2.mp4';
+const ATTENTION_VIDEO = './assets/nagi_attention_v6.mp4';
 const LISTENING_VIDEO = './assets/listening_loop_v02.MP4';
-const ATTENTION_FALLBACK_MS = 3600;
+const ATTENTION_FALLBACK_MS = 6000;
 const ATTENTION_STEP_MS = 180;
-const ATTENTION_AUDIO_DELAY_MS = 540;
+const ATTENTION_AUDIO_DELAY_MS = 1650;
 const LISTENING_HOLD_MS = 700;
 
 function debug(type, data = '') {
@@ -79,7 +79,7 @@ function playVideoOnce(src) {
   portraitB?.classList.remove('visible');
   if (placeholder) placeholder.hidden = true;
   motionVideo.loop = false;
-  motionVideo.src = `${src}?v=attention-v01`;
+  motionVideo.src = `${src}?v=attention-v06`;
   motionVideo.currentTime = 0;
   motionVideo.classList.add('visible');
 
@@ -108,7 +108,7 @@ function playVideoOnce(src) {
 function restoreListeningVideo() {
   if (!motionVideo) return;
   motionVideo.loop = true;
-  motionVideo.src = `${LISTENING_VIDEO}?v=attention-v01`;
+  motionVideo.src = `${LISTENING_VIDEO}?v=attention-v06`;
   motionVideo.currentTime = 0;
   motionVideo.classList.add('visible');
   motionVideo.play()?.catch?.(error => debug('LISTENING_VIDEO_PLAY', error?.message || String(error)));
