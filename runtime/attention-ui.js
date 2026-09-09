@@ -208,6 +208,8 @@ if (composer && textInput) {
 
     event.preventDefault();
     event.stopImmediatePropagation();
+    // Keep context activation in the user gesture, before asynchronous logging.
+    void attentionAudio.prepare();
     textInput.value = '';
     textInput.style.height = '';
     acknowledgeTypedWake(value).catch(error => debug('ATTENTION_ERROR', error?.message || String(error)));
