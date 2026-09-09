@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { createAttentionAcknowledgement, ATTENTION_ACKNOWLEDGEMENT, ATTENTION_SEQUENCE } from '../runtime/attention.js';
 
-test('typed wake prepares audio in submit, then plays only after 1650ms', async () => {
+test('typed wake prepares audio in submit, then plays only after 3000ms', async () => {
   const calls = [];
   const timers = [];
   let submit;
@@ -33,8 +33,8 @@ test('typed wake prepares audio in submit, then plays only after 1650ms', async 
   assert.equal(calls[0], 'prepare');
   assert.ok(!calls.includes('play'));
   for (let i = 0; i < 10; i++) await Promise.resolve();
-  const cue = timers.find(t => t.ms === 1650);
-  assert.ok(cue, 'the cue delay remains 1650ms');
+  const cue = timers.find(t => t.ms === 3000);
+  assert.ok(cue, 'the cue delay remains 3000ms');
   assert.ok(!calls.includes('play'));
   cue.fn();
   for (let i = 0; i < 10; i++) await Promise.resolve();

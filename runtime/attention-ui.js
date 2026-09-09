@@ -26,7 +26,7 @@ const ATTENTION_VIDEO = './assets/nagi_attention_v6.mp4';
 const LISTENING_VIDEO = './assets/listening_loop_v02.MP4';
 const ATTENTION_FALLBACK_MS = 6000;
 const ATTENTION_STEP_MS = 180;
-const ATTENTION_AUDIO_DELAY_MS = 1650;
+const ATTENTION_AUDIO_DELAY_MS = 3000;
 const LISTENING_HOLD_MS = 700;
 
 function debug(type, data = '') {
