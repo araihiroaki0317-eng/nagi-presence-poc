@@ -115,12 +115,18 @@ export class MockConversationAdapter {
     const callbacks = this.callbacks;
     const response = `モックで受け取りました。「${value}」`;
     callbacks.onMessage?.({ source: 'user', message: value, final: true });
-    callbacks.onModeChange?.({ mode: 'speaking' });
+
+    // Verification-only pacing: keep the response transition visible on a real device.
+    // Production provider timing is intentionally untouched.
     setTimeout(() => {
       if (!this.active || callbacks !== this.callbacks) return;
-      callbacks.onMessage?.({ source: 'ai', message: response, final: true });
-      callbacks.onModeChange?.({ mode: 'listening' });
-    }, 240);
+      callbacks.onModeChange?.({ mode: 'speaking' });
+      setTimeout(() => {
+        if (!this.active || callbacks !== this.callbacks) return;
+        callbacks.onMessage?.({ source: 'ai', message: response, final: true });
+        callbacks.onModeChange?.({ mode: 'listening' });
+      }, 1600);
+    }, 1400);
   }
 
   sendActivity() {}
