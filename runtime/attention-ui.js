@@ -21,6 +21,7 @@ const motionVideo = document.getElementById('motionVideo');
 const portraitA = document.getElementById('portraitA');
 const portraitB = document.getElementById('portraitB');
 const placeholder = document.getElementById('placeholder');
+const startTextButton = document.getElementById('startText');
 
 const ATTENTION_VIDEO = './assets/nagi_attention_v6.mp4';
 const LISTENING_VIDEO = './assets/listening_loop_v02.MP4';
@@ -153,6 +154,21 @@ async function playAttentionSequence(attention) {
   setPresenceState('LISTENING', '聞いています。');
 }
 
+async function handoffToConversation() {
+  await runtimeEvent('attention_handoff_requested', {
+    speaker: 'nagi',
+    input_channel: 'text',
+    metadata: { target: 'conversation_core', profile: 'text' },
+  });
+  if (!startTextButton || startTextButton.disabled) {
+    debug('ATTENTION_HANDOFF', 'text conversation unavailable');
+    return false;
+  }
+  debug('ATTENTION_HANDOFF', 'starting text conversation');
+  startTextButton.click();
+  return true;
+}
+
 async function acknowledgeTypedWake(transcript) {
   const attention = createAttentionAcknowledgement({
     transcript,
@@ -197,6 +213,7 @@ async function acknowledgeTypedWake(transcript) {
   await playAttentionSequence(attention);
   await wait(LISTENING_HOLD_MS);
   setPresenceState('LISTENING', '聞いています。');
+  await handoffToConversation();
   return true;
 }
 
