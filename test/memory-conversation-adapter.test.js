@@ -112,3 +112,40 @@ test('memory backend fails closed when endpoint is not configured', async () => 
     /memory_endpoint_required/,
   );
 });
+
+test('memory backend request failure is surfaced through callbacks without rejection', async () => {
+  const errors = [];
+  const modes = [];
+  const statuses = [];
+  const Conversation = { async startSession() { throw new Error('should_not_start'); } };
+  const adapter = new ElevenLabsConversationAdapter({
+    Conversation,
+    agentId: 'agent_test',
+    memoryConfig: {
+      enabled: true,
+      endpoint: 'https://memory.example',
+      userId: 'hiro-test',
+      threadId: 'thread-test',
+    },
+    fetchImpl: async () => new Response(JSON.stringify({ error: 'upstream_failed' }), {
+      status: 502,
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  });
+
+  await adapter.start(CONVERSATION_PROFILES.TEXT_SILENT, {
+    onError(error) { errors.push(error.message); },
+    onModeChange(event) { modes.push(event.mode); },
+    onStatusChange(event) { statuses.push(event.status); },
+  });
+  await Promise.resolve();
+  modes.length = 0;
+  statuses.length = 0;
+
+  const result = await adapter.sendText('失敗しても落ちない？');
+
+  assert.deepEqual(result, { ok: false, error: 'upstream_failed' });
+  assert.deepEqual(errors, ['upstream_failed']);
+  assert.deepEqual(modes, ['listening']);
+  assert.deepEqual(statuses, ['processing', 'error']);
+});
