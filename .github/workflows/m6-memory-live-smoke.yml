@@ -1,0 +1,56 @@
+name: M6 Memory live smoke
+
+on:
+  push:
+    branches: [codex/m6-memory-integration]
+    paths:
+      - '.github/workflows/m6-memory-live-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Verify health CORS and respond path
+        shell: bash
+        env:
+          MEMORY_API: https://nagi-memory-adapter.arai-hiroaki0317.workers.dev
+          PRESENCE_ORIGIN: https://nagi-presence-poc.pages.dev
+        run: |
+          set -u
+          : > smoke.txt
+          health_code="$(curl -sS -D health-headers.txt -o health.json -w '%{http_code}' \
+            -H "Origin: $PRESENCE_ORIGIN" \
+            "$MEMORY_API/health" || true)"
+          cors="$(awk 'BEGIN{IGNORECASE=1} /^access-control-allow-origin:/ {gsub("\r", "", $2); print $2}' health-headers.txt | tail -1)"
+          health_ok="$(jq -r '.ok // false' health.json 2>/dev/null || echo false)"
+
+          respond_code="$(curl -sS -D respond-headers.txt -o respond.json -w '%{http_code}' \
+            -H "Origin: $PRESENCE_ORIGIN" \
+            -H 'Content-Type: application/json' \
+            --data '{"query":"M6 live integration smoke test. Reply briefly in Japanese.","user_id":"nagi-m6-live-test","thread_id":"nagi-m6-live-test-20260914","top_k":3,"threshold":0.1}' \
+            "$MEMORY_API/respond" || true)"
+          respond_cors="$(awk 'BEGIN{IGNORECASE=1} /^access-control-allow-origin:/ {gsub("\r", "", $2); print $2}' respond-headers.txt | tail -1)"
+          respond_ok="$(jq -r '.ok // false' respond.json 2>/dev/null || echo false)"
+          context_ok="$(jq -r '.context_status.ok // false' respond.json 2>/dev/null || echo false)"
+          context_partial="$(jq -r '.context_status.partial // true' respond.json 2>/dev/null || echo true)"
+          zep="$(jq -r '.context_status.sources.conversation // false' respond.json 2>/dev/null || echo false)"
+          mem0="$(jq -r '.context_status.sources.long_term_memory // false' respond.json 2>/dev/null || echo false)"
+          write_ok="$(jq -r '.conversation_write.ok // false' respond.json 2>/dev/null || echo false)"
+          error="$(jq -r '.error // empty' respond.json 2>/dev/null || true)"
+
+          {
+            echo "M6_HEALTH http=$health_code ok=$health_ok cors=$cors"
+            echo "M6_RESPOND http=$respond_code ok=$respond_ok cors=$respond_cors context_ok=$context_ok partial=$context_partial zep=$zep mem0=$mem0 write=$write_ok"
+            if [ -n "$error" ]; then echo "M6_RESPOND_ERROR $error"; fi
+          } | tee smoke.txt
+      - name: Upload smoke result
+        uses: actions/upload-artifact@v4
+        with:
+          name: m6-memory-live-smoke
+          path: smoke.txt
+          if-no-files-found: error
