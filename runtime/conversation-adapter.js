@@ -146,7 +146,7 @@ export class ElevenLabsConversationAdapter {
         callbacks.onModeChange?.({ mode: 'listening' });
         callbacks.onStatusChange?.({ status: 'error', backend: 'memory' });
       }
-      throw error;
+      return { ok: false, error: error?.message || 'memory_backend_error' };
     }
   }
 
