@@ -119,7 +119,9 @@ export class ElevenLabsConversationAdapter {
     try {
       const response = await this.fetchImpl(`${this.memoryConfig.endpoint}/respond`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        // Keep this a CORS-simple request so Cloudflare Preview browsers do not
+        // depend on the older Phase 2B OPTIONS handler before the Worker is redeployed.
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
         body: JSON.stringify({
           query: value,
           user_id: this.memoryConfig.userId,
