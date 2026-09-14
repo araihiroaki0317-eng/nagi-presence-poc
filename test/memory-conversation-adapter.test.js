@@ -6,7 +6,7 @@ import {
   memoryConfigFromLocation,
 } from '../runtime/conversation-adapter.js';
 
-test('memory backend config is opt-in and keeps PoC identity defaults', () => {
+test('memory backend config accepts explicit Memory endpoint and keeps PoC identity defaults', () => {
   const config = memoryConfigFromLocation('?backend=memory&memoryApi=https%3A%2F%2Fexample.test%2F');
   assert.deepEqual(config, {
     enabled: true,
@@ -14,6 +14,21 @@ test('memory backend config is opt-in and keeps PoC identity defaults', () => {
     userId: 'nagi-poc-test',
     threadId: 'nagi-poc-002',
   });
+});
+
+test('M6 text runtime defaults to the live Memory backend without query parameters', () => {
+  const config = memoryConfigFromLocation('');
+  assert.deepEqual(config, {
+    enabled: true,
+    endpoint: 'https://nagi-memory-adapter.arai-hiroaki0317.workers.dev',
+    userId: 'nagi-poc-test',
+    threadId: 'nagi-poc-002',
+  });
+});
+
+test('ElevenLabs can still be explicitly selected for text fallback', () => {
+  const config = memoryConfigFromLocation('?backend=elevenlabs');
+  assert.equal(config.enabled, false);
 });
 
 test('memory text session does not start ElevenLabs', async () => {
