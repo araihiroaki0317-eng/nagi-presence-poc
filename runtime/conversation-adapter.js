@@ -5,6 +5,7 @@ export const CONVERSATION_PROFILES = Object.freeze({
 });
 
 const VALID_PROFILES = new Set(Object.values(CONVERSATION_PROFILES));
+const DEFAULT_MEMORY_ENDPOINT = 'https://nagi-memory-adapter.arai-hiroaki0317.workers.dev';
 
 function assertProfile(profile) {
   if (!VALID_PROFILES.has(profile)) throw new Error('invalid_conversation_profile');
@@ -24,8 +25,11 @@ export function sessionOptionsFor(profile, callbacks = {}) {
 
 export function memoryConfigFromLocation(search = globalThis.location?.search || '') {
   const params = new URLSearchParams(search);
-  const enabled = params.get('backend') === 'memory';
-  const endpoint = String(params.get('memoryApi') || '').replace(/\/+$/, '');
+  // M6 integration default: typed text uses the live Memory backend unless
+  // explicitly overridden with ?backend=elevenlabs. Voice paths remain ElevenLabs.
+  const backend = params.get('backend');
+  const enabled = backend !== 'elevenlabs';
+  const endpoint = String(params.get('memoryApi') || DEFAULT_MEMORY_ENDPOINT).replace(/\/+$/, '');
   return {
     enabled,
     endpoint,
