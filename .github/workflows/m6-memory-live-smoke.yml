@@ -36,16 +36,16 @@ jobs:
             "$MEMORY_API/respond" || true)"
           respond_cors="$(awk 'BEGIN{IGNORECASE=1} /^access-control-allow-origin:/ {gsub("\r", "", $2); print $2}' respond-headers.txt | tail -1)"
           respond_ok="$(jq -r '.ok // false' respond.json 2>/dev/null || echo false)"
-          context_ok="$(jq -r '.context_status.ok // false' respond.json 2>/dev/null || echo false)"
-          context_partial="$(jq -r '.context_status.partial // true' respond.json 2>/dev/null || echo true)"
-          zep="$(jq -r '.context_status.sources.conversation // false' respond.json 2>/dev/null || echo false)"
-          mem0="$(jq -r '.context_status.sources.long_term_memory // false' respond.json 2>/dev/null || echo false)"
-          write_ok="$(jq -r '.conversation_write.ok // false' respond.json 2>/dev/null || echo false)"
+          model="$(jq -r '.model // ""' respond.json 2>/dev/null || true)"
+          context_json="$(jq -c '.context_status // null' respond.json 2>/dev/null || echo null)"
+          write_json="$(jq -c '.conversation_write // null' respond.json 2>/dev/null || echo null)"
           error="$(jq -r '.error // empty' respond.json 2>/dev/null || true)"
 
           {
             echo "M6_HEALTH http=$health_code ok=$health_ok cors=$cors"
-            echo "M6_RESPOND http=$respond_code ok=$respond_ok cors=$respond_cors context_ok=$context_ok partial=$context_partial zep=$zep mem0=$mem0 write=$write_ok"
+            echo "M6_RESPOND http=$respond_code ok=$respond_ok cors=$respond_cors model=$model"
+            echo "M6_CONTEXT $context_json"
+            echo "M6_WRITE $write_json"
             if [ -n "$error" ]; then echo "M6_RESPOND_ERROR $error"; fi
           } | tee smoke.txt
       - name: Upload smoke result
