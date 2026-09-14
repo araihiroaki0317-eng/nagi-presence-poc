@@ -51,3 +51,5 @@ jobs:
           name: m6-preview-discovery
           path: preview.txt
           if-no-files-found: error
+
+# Trigger note: refresh preview discovery after default-Memory routing fix.
