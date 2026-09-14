@@ -24,7 +24,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          api="https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/pages/projects/${CF_PROJECT_NAME}/deployments?env=preview&per_page=50"
+          api="https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/pages/projects/${CF_PROJECT_NAME}/deployments?env=preview&per_page=25"
           response="$(curl --fail --silent --show-error \
             -H "Authorization: Bearer ${CF_API_TOKEN}" \
             -H 'Content-Type: application/json' \
