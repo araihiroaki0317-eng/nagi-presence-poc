@@ -1,0 +1,50 @@
+name: M6 Memory Worker live check
+
+on:
+  push:
+    branches: [codex/m6-memory-integration]
+    paths:
+      - '.github/workflows/m6-memory-worker-live-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Inspect deployed Memory Worker
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -u
+          : > live-check.txt
+          if [ -z "$CF_TOKEN" ] || [ -z "$CF_ACCOUNT" ]; then
+            echo 'M6_LIVE_CHECK credential_or_account_missing' | tee live-check.txt
+            exit 0
+          fi
+          code="$(curl -sS -o worker.bin -w '%{http_code}' \
+            -H "Authorization: Bearer $CF_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/workers/scripts/nagi-memory-adapter" || true)"
+          has_presence='false'
+          if grep -a -q 'nagi-presence-poc.pages.dev' worker.bin 2>/dev/null; then has_presence='true'; fi
+          {
+            echo "M6_LIVE_CHECK script_http=$code presence_cors=$has_presence"
+            if [ "$code" = '200' ] && [ "$has_presence" = 'true' ]; then
+              echo 'M6_LIVE_CHECK_STATUS deployed'
+            elif [ "$code" = '200' ]; then
+              echo 'M6_LIVE_CHECK_STATUS old_script_or_unconfirmed'
+            else
+              echo 'M6_LIVE_CHECK_STATUS api_error'
+            fi
+          } | tee live-check.txt
+      - name: Upload live check
+        uses: actions/upload-artifact@v4
+        with:
+          name: m6-memory-worker-live-check
+          path: live-check.txt
+          if-no-files-found: error
