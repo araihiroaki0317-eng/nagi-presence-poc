@@ -32,18 +32,19 @@ jobs:
           respond_code="$(curl -sS -D respond-headers.txt -o respond.json -w '%{http_code}' \
             -H "Origin: $PRESENCE_ORIGIN" \
             -H 'Content-Type: application/json' \
-            --data '{"query":"M6 live integration smoke test. Reply briefly in Japanese.","user_id":"nagi-m6-live-test","thread_id":"nagi-m6-live-test-20260914","top_k":3,"threshold":0.1}' \
+            --data '{"query":"好きな色は何？","user_id":"nagi-poc-test","thread_id":"nagi-poc-002","top_k":5,"threshold":0.1}' \
             "$MEMORY_API/respond" || true)"
           respond_cors="$(awk 'BEGIN{IGNORECASE=1} /^access-control-allow-origin:/ {gsub("\r", "", $2); print $2}' respond-headers.txt | tail -1)"
           respond_ok="$(jq -r '.ok // false' respond.json 2>/dev/null || echo false)"
           model="$(jq -r '.model // ""' respond.json 2>/dev/null || true)"
           context_json="$(jq -c '.context_status // null' respond.json 2>/dev/null || echo null)"
           write_json="$(jq -c '.conversation_write // null' respond.json 2>/dev/null || echo null)"
+          reply_has_teal="$(jq -r '((.response // "") | ascii_downcase | contains("teal")) or ((.response // "") | contains("ティール"))' respond.json 2>/dev/null || echo false)"
           error="$(jq -r '.error // empty' respond.json 2>/dev/null || true)"
 
           {
             echo "M6_HEALTH http=$health_code ok=$health_ok cors=$cors"
-            echo "M6_RESPOND http=$respond_code ok=$respond_ok cors=$respond_cors model=$model"
+            echo "M6_RESPOND http=$respond_code ok=$respond_ok cors=$respond_cors model=$model memory_answer_teal=$reply_has_teal"
             echo "M6_CONTEXT $context_json"
             echo "M6_WRITE $write_json"
             if [ -n "$error" ]; then echo "M6_RESPOND_ERROR $error"; fi
