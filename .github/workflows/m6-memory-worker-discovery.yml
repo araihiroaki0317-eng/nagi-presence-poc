@@ -1,0 +1,51 @@
+name: M6 Memory Worker discovery
+
+on:
+  push:
+    branches: [codex/m6-memory-integration]
+    paths:
+      - '.github/workflows/m6-memory-worker-discovery.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Discover Memory Worker endpoint read-only
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -u
+          : > memory-worker.txt
+          if [ -z "$CF_API_TOKEN" ] || [ -z "$CF_ACCOUNT_ID" ]; then
+            echo 'M6_MEMORY_WORKER credential_or_account_missing' | tee memory-worker.txt
+            exit 0
+          fi
+
+          auth=(-H "Authorization: Bearer $CF_API_TOKEN" -H 'Content-Type: application/json')
+          subdomain_code="$(curl -sS -o subdomain.json -w '%{http_code}' "${auth[@]}" "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/workers/subdomain" || true)"
+          settings_code="$(curl -sS -o settings.json -w '%{http_code}' "${auth[@]}" "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/workers/scripts/nagi-memory-adapter/settings" || true)"
+          subdomain="$(jq -r '.result.subdomain // empty' subdomain.json 2>/dev/null || true)"
+          subdomain_ok="$(jq -r '.success // false' subdomain.json 2>/dev/null || echo false)"
+          settings_ok="$(jq -r '.success // false' settings.json 2>/dev/null || echo false)"
+
+          {
+            echo "M6_MEMORY_WORKER subdomain_http=$subdomain_code subdomain_api=$subdomain_ok settings_http=$settings_code settings_api=$settings_ok"
+            if [ -n "$subdomain" ]; then
+              echo "M6_MEMORY_WORKER_URL https://nagi-memory-adapter.$subdomain.workers.dev"
+            else
+              echo 'M6_MEMORY_WORKER_URL unavailable'
+            fi
+          } | tee memory-worker.txt
+
+      - name: Upload discovery result
+        uses: actions/upload-artifact@v4
+        with:
+          name: m6-memory-worker-discovery
+          path: memory-worker.txt
+          if-no-files-found: error
