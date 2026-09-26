@@ -18,12 +18,14 @@ export function latestUserTranscript(event) {
 export function createSpeechEngineTransport({
   respondEndpoint,
   fetchImpl = globalThis.fetch?.bind(globalThis),
+  userId = 'hiro',
+  threadId = 'nagi-poc-002',
 } = {}) {
   const endpoint = String(respondEndpoint || '').replace(/\/+$/, '');
   if (!endpoint) throw new Error('respond_endpoint_required');
   if (typeof fetchImpl !== 'function') throw new Error('fetch_required');
 
-  return async function handle(event, { send, signal, userId, threadId } = {}) {
+  return async function handle(event, { send, signal } = {}) {
     if (typeof send !== 'function') throw new Error('send_required');
 
     if (event?.type === 'ping') {
