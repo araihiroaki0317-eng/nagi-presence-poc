@@ -1,6 +1,6 @@
 // Minimal ElevenLabs Speech Engine transport boundary.
 // Conversation semantics stay in nagi-memory-adapter /respond.
-// This module is intentionally runtime-neutral: the WebSocket host supplies send().
+// Session identity is supplied by the caller; this transport never invents it.
 
 export function latestUserTranscript(event) {
   if (!event || event.type !== 'user_transcript') return '';
@@ -21,19 +21,19 @@ export function latestUserTranscript(event) {
 export function createSpeechEngineTransport({
   respondEndpoint,
   fetchImpl = globalThis.fetch?.bind(globalThis),
-  userId = 'nagi-poc-test',
-  threadId = 'nagi-poc-002',
 } = {}) {
   const endpoint = String(respondEndpoint || '').replace(/\/+$/, '');
   if (!endpoint) throw new Error('respond_endpoint_required');
   if (typeof fetchImpl !== 'function') throw new Error('fetch_required');
 
-  return async function handle(event, { send, signal } = {}) {
+  return async function handle(event, { send, signal, userId, threadId } = {}) {
     if (typeof send !== 'function') throw new Error('send_required');
     if (event?.type !== 'user_transcript') return { ok: false, ignored: true };
 
     const query = latestUserTranscript(event);
     if (!query) return { ok: false, reason: 'transcript_required' };
+    if (!userId) throw new Error('user_id_required');
+    if (!threadId) throw new Error('thread_id_required');
 
     const response = await fetchImpl(`${endpoint}/respond`, {
       method: 'POST',
