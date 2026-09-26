@@ -80,7 +80,7 @@ export default {
       try {
         message = JSON.parse(event.data);
       } catch {
-        jsonSend(server, { type: 'error', message: 'invalid_json' });
+        server.close(1003, 'invalid_json');
         return;
       }
 
@@ -102,7 +102,7 @@ export default {
         });
       } catch (error) {
         if (activeController?.signal.aborted) return;
-        jsonSend(server, { type: 'error', message: error?.message || 'transport_error' });
+        server.close(1011, error?.message || 'transport_error');
       }
     });
 
