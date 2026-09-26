@@ -55,6 +55,44 @@ export default {
     if (url.pathname === '/health') {
       return Response.json({ ok: true, service: 'nagi-voice-transport' });
     }
+
+    // One-time bootstrap path: use the managed ElevenLabs secret without exposing it
+    // to the browser, GitHub, logs, or the operator. Remove after bootstrap succeeds.
+    if (url.pathname === '/bootstrap/speech-engine') {
+      if (request.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!env.ELEVENLABS_API_KEY) return Response.json({ ok: false, error: 'missing_elevenlabs_secret' }, { status: 500 });
+
+      const wsUrl = `wss://${url.host}/speech-engine`;
+      const response = await fetch('https://api.elevenlabs.io/v1/speech-engine', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'xi-api-key': env.ELEVENLABS_API_KEY,
+        },
+        body: JSON.stringify({
+          name: 'Nagi Speech Engine',
+          speech_engine: { ws_url: wsUrl },
+          language: 'ja',
+          tags: ['nagi', 'bootstrap'],
+        }),
+      });
+
+      const body = await response.text();
+      if (!response.ok) {
+        return Response.json({ ok: false, status: response.status, error: body.slice(0, 1000) }, { status: 502 });
+      }
+
+      let created;
+      try { created = JSON.parse(body); } catch { created = {}; }
+      return Response.json({
+        ok: true,
+        speech_engine_id: created.speech_engine_id || null,
+        name: created.name || 'Nagi Speech Engine',
+        ws_url: created.speech_engine?.ws_url || wsUrl,
+        voice_id: created.tts?.voice_id || null,
+      });
+    }
+
     if (url.pathname !== '/speech-engine') return new Response('Not found', { status: 404 });
     if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
       return new Response('Expected Upgrade: websocket', { status: 426 });
