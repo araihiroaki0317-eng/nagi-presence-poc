@@ -1,17 +1,14 @@
 // Minimal ElevenLabs Speech Engine transport boundary.
 // Conversation semantics stay in nagi-memory-adapter /respond.
-// Session identity is supplied by the caller; this transport never invents it.
+// Wire format follows the current ElevenLabs Speech Engine upstream protocol.
 
 export function latestUserTranscript(event) {
   if (!event || event.type !== 'user_transcript') return '';
-  const direct = String(event.user_transcript || event.transcript || event.text || '').trim();
-  if (direct) return direct;
-  const history = Array.isArray(event.conversation_history) ? event.conversation_history : [];
+  const history = Array.isArray(event.user_transcript) ? event.user_transcript : [];
   for (let index = history.length - 1; index >= 0; index -= 1) {
     const item = history[index] || {};
-    const role = String(item.role || item.source || '').toLowerCase();
-    if (role === 'user') {
-      const value = String(item.message || item.content || item.text || '').trim();
+    if (item.role === 'user') {
+      const value = String(item.content || '').trim();
       if (value) return value;
     }
   }
@@ -28,6 +25,11 @@ export function createSpeechEngineTransport({
 
   return async function handle(event, { send, signal, userId, threadId } = {}) {
     if (typeof send !== 'function') throw new Error('send_required');
+
+    if (event?.type === 'ping') {
+      await send({ type: 'pong' });
+      return { ok: true, pong: true };
+    }
     if (event?.type !== 'user_transcript') return { ok: false, ignored: true };
 
     const query = latestUserTranscript(event);
@@ -60,12 +62,18 @@ export function createSpeechEngineTransport({
     if (!text) throw new Error('respond_text_missing');
     if (signal?.aborted) return { ok: false, reason: 'aborted' };
 
-    const outgoing = {
+    await send({
       type: 'agent_response',
       event_id: event.event_id,
-      agent_response: text,
-    };
-    await send(outgoing);
+      content: text,
+      is_final: false,
+    });
+    await send({
+      type: 'agent_response',
+      event_id: event.event_id,
+      content: '',
+      is_final: true,
+    });
     return { ok: true, event_id: event.event_id, text };
   };
 }
