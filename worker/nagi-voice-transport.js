@@ -52,11 +52,18 @@ function jsonSend(socket, message) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const origin = request.headers.get('Origin') || '';
+    const allowedOrigin = origin === 'https://araihiroaki0317-eng.github.io' ? origin : '';
     if (url.pathname === '/health') {
       return Response.json({ ok: true, service: 'nagi-voice-transport' });
     }
 
     if (url.pathname === '/tts') {
+      if (request.method === 'OPTIONS') {
+        if (!allowedOrigin) return new Response(null, { status: 403 });
+        return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': allowedOrigin, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Vary': 'Origin' } });
+      }
+      if (!allowedOrigin) return new Response('Forbidden', { status: 403 });
       if (request.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!env.ELEVENLABS_API_KEY) return Response.json({ ok: false, error: 'missing_elevenlabs_secret' }, { status: 500 });
 
@@ -80,7 +87,7 @@ export default {
         body: JSON.stringify({ text, model_id: agent?.conversation_config?.tts?.model_id || 'eleven_multilingual_v2' }),
       });
       if (!speech.ok) return Response.json({ ok: false, error: 'tts_failed', status: speech.status }, { status: 502 });
-      return new Response(speech.body, { status: 200, headers: { 'Content-Type': speech.headers.get('Content-Type') || 'audio/mpeg', 'Cache-Control': 'no-store' } });
+      return new Response(speech.body, { status: 200, headers: { 'Content-Type': speech.headers.get('Content-Type') || 'audio/mpeg', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': allowedOrigin, 'Vary': 'Origin' } });
     }
 
     if (url.pathname !== '/speech-engine') return new Response('Not found', { status: 404 });
