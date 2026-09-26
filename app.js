@@ -7,6 +7,7 @@ import {
   MockConversationAdapter,
 } from './runtime/conversation-adapter.js';
 import { LocalTranscriptStore, transcriptContext } from './runtime/transcript.js';
+import { createTtsOutput } from './runtime/tts-output.js';
 
 const AGENT_ID = 'agent_8501m0nvtj12ea5vnc21ck26v9sp';
 const BASE = './assets/';
@@ -54,9 +55,10 @@ const exportLogBtn = byId('exportLog');
 
 const checkpointStore = new LocalStorageCheckpointStore();
 const transcriptStore = new LocalTranscriptStore();
+const ttsOutput = createTtsOutput();
 const adapter = MOCK_MODE
   ? new MockConversationAdapter()
-  : new ElevenLabsConversationAdapter({ Conversation, agentId: AGENT_ID });
+  : new ElevenLabsConversationAdapter({ Conversation, agentId: AGENT_ID, ttsOutput });
 
 let loadSeq = 0;
 let lastMode = '';
@@ -427,6 +429,7 @@ function callbacksFor(profile, isResume) {
         requestListening('text response complete');
       }
     },
+    onTtsError: detail => debug('TTS_ERROR', detail),
     onError: error => {
       debug('ERROR', error);
       runtimeEvent('runtime_error', { session_id: sessionId, processing_status: 'failed', error: error?.message || safe(error) });
