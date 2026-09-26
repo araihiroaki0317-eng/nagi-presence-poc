@@ -45,6 +45,7 @@ export class ElevenLabsConversationAdapter {
     mediaDevices = globalThis.navigator?.mediaDevices,
     fetchImpl = globalThis.fetch?.bind(globalThis),
     memoryConfig = memoryConfigFromLocation(),
+    ttsOutput = null,
   }) {
     if (!Conversation?.startSession) throw new Error('conversation_sdk_required');
     if (!agentId) throw new Error('agent_id_required');
@@ -53,6 +54,7 @@ export class ElevenLabsConversationAdapter {
     this.mediaDevices = mediaDevices;
     this.fetchImpl = fetchImpl;
     this.memoryConfig = memoryConfig;
+    this.ttsOutput = ttsOutput;
     this.session = null;
     this.profile = null;
     this.callbacks = null;
@@ -143,9 +145,15 @@ export class ElevenLabsConversationAdapter {
       if (this.session !== session) return;
       callbacks.onModeChange?.({ mode: 'speaking' });
       callbacks.onMessage?.({ source: 'ai', message: reply, final: true, backend: 'memory' });
+      let tts = null;
+      if (this.ttsOutput?.speak) {
+        tts = await this.ttsOutput.speak(reply);
+        if (!tts?.ok) callbacks.onTtsError?.(tts);
+      }
+      if (this.session !== session) return payload;
       callbacks.onModeChange?.({ mode: 'listening' });
       callbacks.onStatusChange?.({ status: 'connected', backend: 'memory' });
-      return payload;
+      return tts ? { ...payload, tts } : payload;
     } catch (error) {
       if (this.session === session) {
         callbacks.onError?.(error);
