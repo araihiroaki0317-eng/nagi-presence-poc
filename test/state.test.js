@@ -82,26 +82,19 @@ test('text-only profile uses websocket without microphone audio', () => {
   assert.equal(options.overrides.conversation.textOnly, true);
 });
 
-test('typed message can use a voice reply while microphone stays muted', async () => {
+test('typed voice reply keeps Memory as SoT and sends only the response to TTS', async () => {
   const calls = [];
-  const session = {
-    setMicMuted(value) { calls.push(['mute', value]); },
-    sendUserMessage(value) { calls.push(['message', value]); },
-    async endSession() { calls.push(['end']); },
+  const Conversation = { async startSession() { calls.push(['unexpected_elevenlabs_session']); } };
+  const fetchImpl = async (_url, options) => {
+    calls.push(['memory', JSON.parse(options.body).query]);
+    return { ok: true, async json() { return { response: '凪の返答' }; } };
   };
-  const Conversation = {
-    async startSession(options) {
-      calls.push(['start', options]);
-      return session;
-    },
-  };
-  const adapter = new ElevenLabsConversationAdapter({ Conversation, agentId: 'agent_test' });
+  const ttsOutput = { async speak(text) { calls.push(['tts', text]); return { ok: true }; } };
+  const adapter = new ElevenLabsConversationAdapter({ Conversation, agentId: 'agent_test', fetchImpl, ttsOutput });
   await adapter.start(CONVERSATION_PROFILES.TEXT_AUDIO);
-  adapter.sendText('文字で送る');
+  await adapter.sendText('文字で送る');
   await adapter.end();
-  assert.equal(calls[0][1].connectionType, 'webrtc');
-  assert.equal(calls[0][1].micMuted, true);
-  assert.deepEqual(calls.slice(1), [['mute', true], ['message', '文字で送る'], ['end']]);
+  assert.deepEqual(calls, [['memory', '文字で送る'], ['tts', '凪の返答']]);
 });
 
 test('transcript merges growing sdk text and keeps typed turns distinct', () => {
