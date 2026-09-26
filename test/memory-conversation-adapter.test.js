@@ -164,3 +164,40 @@ test('memory backend request failure is surfaced through callbacks without rejec
   assert.deepEqual(modes, ['listening']);
   assert.deepEqual(statuses, ['processing', 'error']);
 });
+
+test('memory response remains speaking until optional TTS completes', async () => {
+  const events = [];
+  let release;
+  const ttsDone = new Promise(resolve => { release = resolve; });
+  const adapter = new ElevenLabsConversationAdapter({
+    Conversation: { async startSession() { throw new Error('should_not_start'); } },
+    agentId: 'agent_test',
+    memoryConfig: { enabled: true, endpoint: 'https://memory.example', userId: 'hiro', threadId: 'thread-tts' },
+    fetchImpl: async () => new Response(JSON.stringify({ response: '同期する返答' }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    }),
+    ttsOutput: {
+      async speak(text) {
+        events.push(['tts', text]);
+        await ttsDone;
+        return { ok: true };
+      },
+    },
+  });
+  await adapter.start(CONVERSATION_PROFILES.TEXT_SILENT, {
+    onModeChange(event) { events.push(['mode', event.mode]); },
+    onMessage(event) { events.push(['message', event.message]); },
+  });
+  await Promise.resolve();
+  events.length = 0;
+  const pending = adapter.sendText('話して');
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.deepEqual(events, [
+    ['mode', 'speaking'],
+    ['message', '同期する返答'],
+    ['tts', '同期する返答'],
+  ]);
+  release();
+  await pending;
+  assert.deepEqual(events.at(-1), ['mode', 'listening']);
+});
