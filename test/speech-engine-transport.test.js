@@ -26,7 +26,7 @@ test('forwards exact CreO response using current Speech Engine wire format', asy
 
   const result = await handle(
     { type: 'user_transcript', event_id: 42, user_transcript: [{ role: 'user', content: 'テスト' }] },
-    { send: async message => outgoing.push(message), userId: 'hiro', threadId: 'nagi-poc-002' },
+    { send: async message => outgoing.push(message) },
   );
 
   assert.equal(requestBody.query, 'テスト');
@@ -73,22 +73,26 @@ test('does not send a response after cancellation', async () => {
   });
   const result = await handle(
     { type: 'user_transcript', event_id: 1, user_transcript: [{ role: 'user', content: '古い入力' }] },
-    { signal: controller.signal, send: async () => { sent = true; }, userId: 'hiro', threadId: 'nagi-poc-002' },
+    { signal: controller.signal, send: async () => { sent = true; } },
   );
   assert.deepEqual(result, { ok: false, reason: 'aborted' });
   assert.equal(sent, false);
 });
 
-test('requires caller-owned session identity', async () => {
+
+test('uses the approved PoC Memory identity by default', async () => {
+  let requestBody;
   const handle = createSpeechEngineTransport({
     respondEndpoint: 'https://memory.example',
-    fetchImpl: async () => { throw new Error('must_not_call'); },
+    fetchImpl: async (_url, options) => {
+      requestBody = JSON.parse(options.body);
+      return { ok: true, json: async () => ({ response: 'ok' }) };
+    },
   });
-  await assert.rejects(
-    () => handle(
-      { type: 'user_transcript', event_id: 7, user_transcript: [{ role: 'user', content: 'test' }] },
-      { send: async () => {} },
-    ),
-    /user_id_required/,
+  await handle(
+    { type: 'user_transcript', event_id: 8, user_transcript: [{ role: 'user', content: 'test' }] },
+    { send: async () => {} },
   );
+  assert.equal(requestBody.user_id, 'hiro');
+  assert.equal(requestBody.thread_id, 'nagi-poc-002');
 });
