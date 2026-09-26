@@ -45,6 +45,7 @@ export class ElevenLabsConversationAdapter {
     mediaDevices = globalThis.navigator?.mediaDevices,
     fetchImpl = globalThis.fetch?.bind(globalThis),
     memoryConfig = memoryConfigFromLocation(),
+    ttsOutput = null,
   }) {
     if (!Conversation?.startSession) throw new Error('conversation_sdk_required');
     if (!agentId) throw new Error('agent_id_required');
@@ -53,6 +54,7 @@ export class ElevenLabsConversationAdapter {
     this.mediaDevices = mediaDevices;
     this.fetchImpl = fetchImpl;
     this.memoryConfig = memoryConfig;
+    this.ttsOutput = ttsOutput;
     this.session = null;
     this.profile = null;
     this.callbacks = null;
@@ -64,14 +66,14 @@ export class ElevenLabsConversationAdapter {
   }
 
   get memoryMode() {
-    return Boolean(this.memoryConfig?.enabled && this.profile === CONVERSATION_PROFILES.TEXT_SILENT);
+    return Boolean(this.memoryConfig?.enabled && (this.profile === CONVERSATION_PROFILES.TEXT_SILENT || this.profile === CONVERSATION_PROFILES.TEXT_AUDIO));
   }
 
   async start(profile, callbacks = {}) {
     assertProfile(profile);
     if (this.session) throw new Error('conversation_already_started');
 
-    if (this.memoryConfig?.enabled && profile === CONVERSATION_PROFILES.TEXT_SILENT) {
+    if (this.memoryConfig?.enabled && (profile === CONVERSATION_PROFILES.TEXT_SILENT || profile === CONVERSATION_PROFILES.TEXT_AUDIO)) {
       if (!this.memoryConfig.endpoint) throw new Error('memory_endpoint_required');
       if (!this.fetchImpl) throw new Error('fetch_required');
       this.profile = profile;
@@ -143,6 +145,10 @@ export class ElevenLabsConversationAdapter {
       if (this.session !== session) return;
       callbacks.onModeChange?.({ mode: 'speaking' });
       callbacks.onMessage?.({ source: 'ai', message: reply, final: true, backend: 'memory' });
+      if (this.profile === CONVERSATION_PROFILES.TEXT_AUDIO && this.ttsOutput?.speak) {
+        const tts = await this.ttsOutput.speak(reply);
+        if (!tts?.ok) callbacks.onTtsError?.(tts);
+      }
       callbacks.onModeChange?.({ mode: 'listening' });
       callbacks.onStatusChange?.({ status: 'connected', backend: 'memory' });
       return payload;
