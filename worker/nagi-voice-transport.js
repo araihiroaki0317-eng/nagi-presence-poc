@@ -1,3 +1,4 @@
+import { WorkerEntrypoint } from 'cloudflare:workers';
 import { createSpeechEngineTransport } from '../runtime/speech-engine-transport.js';
 
 const ISSUER = 'https://api.elevenlabs.io/convai/speech-engine';
@@ -47,6 +48,22 @@ export async function verifySpeechEngineJwt(token, apiKey, nowSeconds = Date.now
 
 function jsonSend(socket, message) {
   socket.send(JSON.stringify(message));
+}
+
+export class ObservabilityEntrypoint extends WorkerEntrypoint {
+  async getElevenLabsUsage({ startTime, endTime, intervalSeconds = 3600, timeZone = 'Asia/Tokyo' } = {}) {
+    if (!this.env.ELEVENLABS_API_KEY) throw new Error('missing_elevenlabs_secret');
+    if (!Number.isInteger(startTime) || !Number.isInteger(endTime) || startTime >= endTime) throw new Error('invalid_usage_window');
+    const response = await fetch('https://api.elevenlabs.io/v1/workspace/analytics/query/usage-by-product-over-time', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'xi-api-key': this.env.ELEVENLABS_API_KEY },
+      body: JSON.stringify({ start_time: startTime, end_time: endTime, interval_seconds: intervalSeconds, time_zone: timeZone }),
+    });
+    let payload = null;
+    try { payload = await response.json(); } catch { payload = null; }
+    if (!response.ok) throw new Error(`elevenlabs_usage_failed:${response.status}`);
+    return { source: 'elevenlabs', startTime, endTime, intervalSeconds, timeZone, ...payload };
+  }
 }
 
 export default {
