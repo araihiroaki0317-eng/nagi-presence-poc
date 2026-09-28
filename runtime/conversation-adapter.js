@@ -93,7 +93,7 @@ export class ElevenLabsConversationAdapter {
           onTranscript: event => {
             if (!this.session || this.session.id !== id) return;
             callbacks.onMessage?.({ source: 'user', message: event.text, final: event.final, backend: 'stt' });
-            if (event.final) this.sendMemoryText(event.text);
+            if (event.final) void this.sendMemoryText(event.text);
           },
           onError: error => callbacks.onError?.(error),
         });
