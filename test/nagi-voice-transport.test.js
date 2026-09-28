@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { verifySpeechEngineJwt } from '../worker/nagi-voice-transport.js';
+import { verifySpeechEngineJwt } from '../runtime/speech-engine-auth.js';
 
 function b64url(bytes) {
   return Buffer.from(bytes).toString('base64url');
