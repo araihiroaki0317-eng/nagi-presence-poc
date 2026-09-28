@@ -18,7 +18,7 @@ test('direct voice bypasses ElevenLabs Agent and keeps Memory as response SoT', 
   };
   const ttsOutput = { async speak(text) { calls.push(['tts', text]); return { ok: true }; } };
   const messages = [];
-  const adapter = new ElevenLabsConversationAdapter({ Conversation, agentId: 'agent_test', fetchImpl, ttsOutput, voiceInput });
+  const adapter = new ElevenLabsConversationAdapter({ Conversation, agentId: 'agent_test', fetchImpl, ttsOutput, voiceInput, memoryConfig: { enabled: true, endpoint: 'https://memory.test', userId: 'hiro', threadId: 'voice-test' } });
   await adapter.start(CONVERSATION_PROFILES.VOICE, { onMessage: m => messages.push(m) });
   hooks.onPartial?.('こん');
   hooks.onFinal?.('こんにちは');
