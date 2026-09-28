@@ -46,6 +46,7 @@ export class ElevenLabsConversationAdapter {
     fetchImpl = globalThis.fetch?.bind(globalThis),
     memoryConfig = memoryConfigFromLocation(),
     ttsOutput = null,
+    voiceInput = null,
   }) {
     if (!Conversation?.startSession) throw new Error('conversation_sdk_required');
     if (!agentId) throw new Error('agent_id_required');
@@ -55,6 +56,7 @@ export class ElevenLabsConversationAdapter {
     this.fetchImpl = fetchImpl;
     this.memoryConfig = memoryConfig;
     this.ttsOutput = ttsOutput;
+    this.voiceInput = voiceInput;
     this.session = null;
     this.profile = null;
     this.callbacks = null;
@@ -66,14 +68,14 @@ export class ElevenLabsConversationAdapter {
   }
 
   get memoryMode() {
-    return Boolean(this.memoryConfig?.enabled && (this.profile === CONVERSATION_PROFILES.TEXT_SILENT || this.profile === CONVERSATION_PROFILES.TEXT_AUDIO));
+    return Boolean(this.memoryConfig?.enabled && (this.profile === CONVERSATION_PROFILES.TEXT_SILENT || this.profile === CONVERSATION_PROFILES.TEXT_AUDIO || (this.profile === CONVERSATION_PROFILES.VOICE && this.voiceInput)));
   }
 
   async start(profile, callbacks = {}) {
     assertProfile(profile);
     if (this.session) throw new Error('conversation_already_started');
 
-    if (this.memoryConfig?.enabled && (profile === CONVERSATION_PROFILES.TEXT_SILENT || profile === CONVERSATION_PROFILES.TEXT_AUDIO)) {
+    if (this.memoryConfig?.enabled && (profile === CONVERSATION_PROFILES.TEXT_SILENT || profile === CONVERSATION_PROFILES.TEXT_AUDIO || (profile === CONVERSATION_PROFILES.VOICE && this.voiceInput))) {
       if (!this.memoryConfig.endpoint) throw new Error('memory_endpoint_required');
       if (!this.fetchImpl) throw new Error('fetch_required');
       this.profile = profile;
@@ -86,6 +88,16 @@ export class ElevenLabsConversationAdapter {
         callbacks.onConnect?.();
         callbacks.onModeChange?.({ mode: 'listening' });
       });
+      if (profile === CONVERSATION_PROFILES.VOICE && this.voiceInput) {
+        await this.voiceInput.start({
+          onTranscript: event => {
+            if (!this.session || this.session.id !== id) return;
+            callbacks.onMessage?.({ source: 'user', message: event.text, final: event.final, backend: 'stt' });
+            if (event.final) this.sendMemoryText(event.text);
+          },
+          onError: error => callbacks.onError?.(error),
+        });
+      }
       return this.session;
     }
 
@@ -145,7 +157,7 @@ export class ElevenLabsConversationAdapter {
       if (this.session !== session) return;
       callbacks.onModeChange?.({ mode: 'speaking' });
       callbacks.onMessage?.({ source: 'ai', message: reply, final: true, backend: 'memory' });
-      if (this.profile === CONVERSATION_PROFILES.TEXT_AUDIO && this.ttsOutput?.speak) {
+      if ((this.profile === CONVERSATION_PROFILES.TEXT_AUDIO || this.profile === CONVERSATION_PROFILES.VOICE) && this.ttsOutput?.speak) {
         const tts = await this.ttsOutput.speak(reply);
         if (!tts?.ok) callbacks.onTtsError?.(tts);
       }
@@ -185,6 +197,7 @@ export class ElevenLabsConversationAdapter {
     this.profile = null;
     this.callbacks = null;
     if (wasMemory) {
+      if (session && this.voiceInput?.active) await this.voiceInput.stop();
       callbacks?.onStatusChange?.({ status: 'disconnected', backend: 'memory' });
       callbacks?.onDisconnect?.({ reason: 'memory_session_ended' });
       return;
