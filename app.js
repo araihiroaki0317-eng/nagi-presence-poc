@@ -1,4 +1,4 @@
-import { Conversation } from 'https://esm.sh/@elevenlabs/client@latest?bundle';
+import { Conversation, Scribe, RealtimeEvents, CommitStrategy } from 'https://esm.sh/@elevenlabs/client@latest?bundle';
 import { eventLog, runtimeEvent, runtimeState } from './runtime/runtime.js';
 import { createCheckpoint, LocalStorageCheckpointStore, contextFromCheckpoint } from './runtime/checkpoint.js';
 import {
@@ -7,12 +7,17 @@ import {
   MockConversationAdapter,
 } from './runtime/conversation-adapter.js';
 import { LocalTranscriptStore, transcriptContext } from './runtime/transcript.js';
+import { createTtsOutput } from './runtime/tts-output.js';
+import { RealtimeVoiceInput } from './runtime/voice-input.js';
 
 const AGENT_ID = 'agent_8501m0nvtj12ea5vnc21ck26v9sp';
 const BASE = './assets/';
 const RESUME_KEY = 'nagi.m3a.resume.v1';
 const SPEAKING_RELEASE_MS = 1000;
-const MOCK_MODE = new URLSearchParams(location.search).get('mock') === '1';
+const params = new URLSearchParams(location.search);
+const MOCK_MODE = params.get('mock') === '1';
+const DIRECT_VOICE = params.get('voice') === 'direct';
+const VOICE_TRANSPORT = 'https://nagi-voice-transport.arai-hiroaki0317.workers.dev';
 
 const motionAssets = {
   listening: BASE + 'listening_loop_v02.MP4',
@@ -54,9 +59,30 @@ const exportLogBtn = byId('exportLog');
 
 const checkpointStore = new LocalStorageCheckpointStore();
 const transcriptStore = new LocalTranscriptStore();
+const ttsOutput = createTtsOutput();
+const voiceInput = DIRECT_VOICE ? new RealtimeVoiceInput({
+  connect: async ({ onPartial, onFinal, onError }) => {
+    const tokenResponse = await fetch(`${VOICE_TRANSPORT}/scribe-token`, { method: 'POST' });
+    if (!tokenResponse.ok) throw new Error(`scribe_token_http_${tokenResponse.status}`);
+    const { token } = await tokenResponse.json();
+    if (!token) throw new Error('scribe_token_missing');
+    const connection = Scribe.connect({
+      token,
+      modelId: 'scribe_v2_realtime',
+      languageCode: 'ja',
+      commitStrategy: CommitStrategy.VAD,
+      vadSilenceThresholdSecs: 1.0,
+      microphone: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+    connection.on(RealtimeEvents.PARTIAL_TRANSCRIPT, data => onPartial(data?.text));
+    connection.on(RealtimeEvents.COMMITTED_TRANSCRIPT, data => onFinal(data?.text));
+    connection.on(RealtimeEvents.ERROR, onError);
+    return { close: () => connection.close() };
+  },
+}) : null;
 const adapter = MOCK_MODE
   ? new MockConversationAdapter()
-  : new ElevenLabsConversationAdapter({ Conversation, agentId: AGENT_ID });
+  : new ElevenLabsConversationAdapter({ Conversation, agentId: AGENT_ID, ttsOutput, voiceInput });
 
 let loadSeq = 0;
 let lastMode = '';
@@ -427,6 +453,7 @@ function callbacksFor(profile, isResume) {
         requestListening('text response complete');
       }
     },
+    onTtsError: detail => debug('TTS_ERROR', detail),
     onError: error => {
       debug('ERROR', error);
       runtimeEvent('runtime_error', { session_id: sessionId, processing_status: 'failed', error: error?.message || safe(error) });
