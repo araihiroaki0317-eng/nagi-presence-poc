@@ -22,7 +22,7 @@ test('direct voice bypasses ElevenLabs Agent and keeps Memory as response SoT', 
   await adapter.start(CONVERSATION_PROFILES.VOICE, { onMessage: m => messages.push(m) });
   hooks.onPartial?.('こん');
   hooks.onFinal?.('こんにちは');
-  await new Promise(resolve => setTimeout(resolve, 0));
+  await new Promise(resolve => setTimeout(resolve, 20));
   assert.deepEqual(calls.slice(0, 3), [['stt_start'], ['memory', 'こんにちは'], ['tts', '凪の返答']]);
   assert.equal(calls.some(([name]) => name === 'unexpected_agent'), false);
   assert.equal(messages.some(m => m.source === 'ai' && m.message === '凪の返答'), true);
