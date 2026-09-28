@@ -58,6 +58,24 @@ export default {
       return Response.json({ ok: true, service: 'nagi-voice-transport' });
     }
 
+    if (url.pathname === '/scribe-token') {
+      if (request.method === 'OPTIONS') {
+        if (!allowedOrigin) return new Response(null, { status: 403 });
+        return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': allowedOrigin, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Vary': 'Origin' } });
+      }
+      if (!allowedOrigin) return new Response('Forbidden', { status: 403 });
+      if (request.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!env.ELEVENLABS_API_KEY) return Response.json({ ok: false, error: 'missing_elevenlabs_secret' }, { status: 500 });
+      const tokenResponse = await fetch('https://api.elevenlabs.io/v1/single-use-token/realtime_scribe', {
+        method: 'POST',
+        headers: { 'xi-api-key': env.ELEVENLABS_API_KEY },
+      });
+      let payload = null;
+      try { payload = await tokenResponse.json(); } catch { payload = null; }
+      if (!tokenResponse.ok || !payload?.token) return Response.json({ ok: false, error: 'scribe_token_failed', status: tokenResponse.status }, { status: 502 });
+      return Response.json({ token: payload.token }, { headers: { 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': allowedOrigin, 'Vary': 'Origin' } });
+    }
+
     if (url.pathname === '/tts') {
       if (request.method === 'OPTIONS') {
         if (!allowedOrigin) return new Response(null, { status: 403 });
