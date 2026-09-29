@@ -123,7 +123,7 @@ export default {
       const voiceId = agent?.conversation_config?.tts?.voice_id;
       if (!voiceId) return Response.json({ ok: false, error: 'agent_voice_missing' }, { status: 502 });
 
-      const speech = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`, {
+      const speech = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=${encodeURIComponent(input?.output_format === 'pcm_24000' ? 'pcm_24000' : 'mp3_44100_128')}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'xi-api-key': env.ELEVENLABS_API_KEY },
         body: JSON.stringify({ text, model_id: agent?.conversation_config?.tts?.model_id || 'eleven_multilingual_v2' }),
