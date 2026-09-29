@@ -51,6 +51,37 @@ export default {
       }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
+    if (url.pathname === '/liveavatar-session-token') {
+      if (request.method === 'OPTIONS') {
+        if (!allowedOrigin) return new Response(null, { status: 403 });
+        return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': allowedOrigin, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Vary': 'Origin' } });
+      }
+      if (!allowedOrigin) return new Response('Forbidden', { status: 403 });
+      if (request.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!env.LIVEAVATAR_API_KEY) return Response.json({ ok: false, error: 'missing_liveavatar_secret' }, { status: 500 });
+
+      let input;
+      try { input = await request.json(); } catch { return Response.json({ ok: false, error: 'invalid_json' }, { status: 400 }); }
+      const avatarId = String(input?.avatar_id || '').trim();
+      if (!avatarId || avatarId.length > 200) return Response.json({ ok: false, error: 'invalid_avatar_id' }, { status: 400 });
+
+      const tokenResponse = await fetch('https://api.liveavatar.com/v1/sessions/token', {
+        method: 'POST',
+        headers: { 'X-API-KEY': env.LIVEAVATAR_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'LITE', avatar_id: avatarId, is_sandbox: true }),
+      });
+      let payload = null;
+      try { payload = await tokenResponse.json(); } catch { payload = null; }
+      const sessionToken = payload?.data?.session_token;
+      const sessionId = payload?.data?.session_id;
+      if (!tokenResponse.ok || !sessionToken) {
+        return Response.json({ ok: false, error: 'liveavatar_session_token_failed', status: tokenResponse.status }, { status: 502 });
+      }
+      return Response.json({ session_token: sessionToken, session_id: sessionId }, {
+        headers: { 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': allowedOrigin, 'Vary': 'Origin' },
+      });
+    }
+
     if (url.pathname === '/scribe-token') {
       if (request.method === 'OPTIONS') {
         if (!allowedOrigin) return new Response(null, { status: 403 });
