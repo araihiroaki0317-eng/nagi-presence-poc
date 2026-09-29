@@ -27,7 +27,8 @@ audioBtn.onclick=async()=>{
     if(!r.ok) throw new Error('tts HTTP '+r.status);
     const pcm=new Uint8Array(await r.arrayBuffer());
     if(!pcm.length) throw new Error('empty pcm');
-    const bytes=Array.from(pcm); const binary=String.fromCharCode(...bytes);
+    let binary=''; const CHUNK=0x8000;
+    for(let i=0;i<pcm.length;i+=CHUNK) binary+=String.fromCharCode(...pcm.subarray(i,i+CHUNK));
     const sock=session._sessionEventSocket;
     if(!sock) throw new Error('LiveAvatar event socket unavailable');
     if(!sock.__nagiBase64Patch){
