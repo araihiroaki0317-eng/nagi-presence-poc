@@ -27,8 +27,27 @@ audioBtn.onclick=async()=>{
     if(!r.ok) throw new Error('tts HTTP '+r.status);
     const pcm=new Uint8Array(await r.arrayBuffer());
     if(!pcm.length) throw new Error('empty pcm');
-    const bytes=Array.from(pcm); const binary=String.fromCharCode(...bytes); const audioBase64=btoa(binary); await session.repeatAudio(audioBase64);
-    setStatus('base64 PCM送信完了: '+pcm.length+' bytes — 口パクと音声を確認');
+    const bytes=Array.from(pcm); const binary=String.fromCharCode(...bytes);
+    const sock=session._sessionEventSocket;
+    if(!sock) throw new Error('LiveAvatar event socket unavailable');
+    if(!sock.__nagiBase64Patch){
+      const originalSend=sock.send.bind(sock);
+      sock.send=(data)=>{
+        if(typeof data==='string'){
+          try{
+            const parsed=JSON.parse(data);
+            if(parsed?.type==='agent.speak' && typeof parsed.audio==='string'){
+              parsed.audio=btoa(parsed.audio);
+              return originalSend(JSON.stringify(parsed));
+            }
+          }catch{}
+        }
+        return originalSend(data);
+      };
+      sock.__nagiBase64Patch=true;
+    }
+    await session.repeatAudio(binary);
+    setStatus('PCM送信完了: '+pcm.length+' bytes — SDK wire patch適用済み');
   }catch(e){setStatus('AUDIO FAIL: '+(e?.message||e));}
   finally{audioBtn.disabled=false;}
 };
