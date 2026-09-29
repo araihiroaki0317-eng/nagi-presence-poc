@@ -1,7 +1,7 @@
 name = "nagi-voice-transport"
 main = "worker/nagi-voice-transport.js"
 compatibility_date = "2026-09-26"
-# Cloudflare Git deployment trigger: voice transport branch
+# Cloudflare Git deployment trigger: main (2026-09-29)
 
 [vars]
 NAGI_RESPOND_ENDPOINT = "https://nagi-memory-adapter.arai-hiroaki0317.workers.dev"
