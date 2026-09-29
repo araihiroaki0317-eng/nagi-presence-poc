@@ -3,7 +3,7 @@ const TRANSPORT='https://nagi-voice-transport.arai-hiroaki0317.workers.dev';
 const video=document.getElementById('avatar'), start=document.getElementById('start'), stop=document.getElementById('stop'), status=document.getElementById('status');
 let session=null;
 const setStatus=(s)=>status.textContent=s;
-const audioBtn=document.createElement('button'); audioBtn.textContent='凪音声テスト'; audioBtn.disabled=true; stop.before(audioBtn);
+const audioBtn=document.createElement('button'); audioBtn.textContent='口パクテスト'; audioBtn.disabled=true; stop.before(audioBtn);
 start.onclick=async()=>{
   start.disabled=true; setStatus('session token取得中…');
   try{
@@ -21,9 +21,9 @@ start.onclick=async()=>{
 stop.onclick=async()=>{stop.disabled=true; try{await session?.stop();}finally{session=null;start.disabled=false;setStatus('終了');}};
 
 audioBtn.onclick=async()=>{
-  audioBtn.disabled=true; setStatus('ElevenLabs→LiveAvatar 音声送信中…');
+  audioBtn.disabled=true; setStatus('外部PCM→LiveAvatar 口パク確認中…');
   try{
-    const r=await fetch(TRANSPORT+'/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:'こんにちは。凪の音声同期テストです。',output_format:'pcm_24000'})});
+    const r=await fetch(TRANSPORT+'/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:'音声同期の動作確認です。',output_format:'pcm_24000'})});
     if(!r.ok) throw new Error('tts HTTP '+r.status);
     const pcm=new Uint8Array(await r.arrayBuffer());
     if(!pcm.length) throw new Error('empty pcm');
