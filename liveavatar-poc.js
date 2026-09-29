@@ -27,8 +27,8 @@ audioBtn.onclick=async()=>{
     if(!r.ok) throw new Error('tts HTTP '+r.status);
     const pcm=new Uint8Array(await r.arrayBuffer());
     if(!pcm.length) throw new Error('empty pcm');
-    await session.repeatAudio(pcm);
-    setStatus('PCM送信完了: '+pcm.length+' bytes — 口パクと音声を確認');
+    const bytes=Array.from(pcm); const binary=String.fromCharCode(...bytes); const audioBase64=btoa(binary); await session.repeatAudio(audioBase64);
+    setStatus('base64 PCM送信完了: '+pcm.length+' bytes — 口パクと音声を確認');
   }catch(e){setStatus('AUDIO FAIL: '+(e?.message||e));}
   finally{audioBtn.disabled=false;}
 };
