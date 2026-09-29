@@ -62,8 +62,8 @@ export default {
 
       let input;
       try { input = await request.json(); } catch { return Response.json({ ok: false, error: 'invalid_json' }, { status: 400 }); }
-      const avatarId = String(input?.avatar_id || '').trim();
-      if (!avatarId || avatarId.length > 200) return Response.json({ ok: false, error: 'invalid_avatar_id' }, { status: 400 });
+      const avatarId = String(input?.avatar_id || 'dd73ea75-1218-4ef3-92ce-606d5f7fbc0a').trim();
+      if (avatarId.length > 200) return Response.json({ ok: false, error: 'invalid_avatar_id' }, { status: 400 });
 
       const tokenResponse = await fetch('https://api.liveavatar.com/v1/sessions/token', {
         method: 'POST',
