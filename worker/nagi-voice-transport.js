@@ -31,6 +31,26 @@ export default {
       return Response.json({ ok: true, service: 'nagi-voice-transport' });
     }
 
+    if (url.pathname === '/liveavatar-health') {
+      if (!env.LIVEAVATAR_API_KEY) {
+        return Response.json({ ok: false, service: 'liveavatar', error: 'missing_liveavatar_secret' }, { status: 500 });
+      }
+      const creditsResponse = await fetch('https://api.liveavatar.com/v1/users/credits', {
+        headers: { 'X-API-KEY': env.LIVEAVATAR_API_KEY },
+      });
+      let payload = null;
+      try { payload = await creditsResponse.json(); } catch { payload = null; }
+      if (!creditsResponse.ok) {
+        return Response.json({ ok: false, service: 'liveavatar', error: 'liveavatar_auth_failed', status: creditsResponse.status }, { status: 502 });
+      }
+      return Response.json({
+        ok: true,
+        service: 'liveavatar',
+        authenticated: true,
+        credits_left: payload?.data?.credits_left ?? null,
+      }, { headers: { 'Cache-Control': 'no-store' } });
+    }
+
     if (url.pathname === '/scribe-token') {
       if (request.method === 'OPTIONS') {
         if (!allowedOrigin) return new Response(null, { status: 403 });
