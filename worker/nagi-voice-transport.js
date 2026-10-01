@@ -144,6 +144,23 @@ export default {
       return Response.json({ token: payload.token }, { headers: { 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': allowedOrigin, 'Vary': 'Origin' } });
     }
 
+    if (url.pathname === '/bithuman-test-audio' && request.method === 'GET') {
+      if (!env.ELEVENLABS_API_KEY) return new Response('Unavailable', { status: 503 });
+      const agentId = env.NAGI_ELEVENLABS_AGENT_ID || 'agent_8501m0nvtj12ea5vnc21ck26v9sp';
+      const cfg = await fetch('https://api.elevenlabs.io/v1/convai/agents/' + agentId, { headers: { 'xi-api-key': env.ELEVENLABS_API_KEY } });
+      if (!cfg.ok) return new Response('Unavailable', { status: 502 });
+      const agent = await cfg.json();
+      const voiceId = agent?.conversation_config?.tts?.voice_id;
+      if (!voiceId) return new Response('Unavailable', { status: 502 });
+      const speech = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + encodeURIComponent(voiceId) + '?output_format=mp3_44100_128', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'xi-api-key': env.ELEVENLABS_API_KEY },
+        body: JSON.stringify({ text: 'こんにちは。凪の声で、リップシンクの動作を確認しています。', model_id: agent?.conversation_config?.tts?.model_id || 'eleven_multilingual_v2' }),
+      });
+      if (!speech.ok) return new Response('Unavailable', { status: 502 });
+      return new Response(speech.body, { headers: { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store' } });
+    }
+
     if (url.pathname === '/bithuman-health') {
       if (request.method === 'OPTIONS') {
         if (!allowedOrigin) return new Response(null, { status: 403 });
