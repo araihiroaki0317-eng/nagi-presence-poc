@@ -144,6 +144,52 @@ export default {
       return Response.json({ token: payload.token }, { headers: { 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': allowedOrigin, 'Vary': 'Origin' } });
     }
 
+    if (url.pathname === '/bithuman-test-audio' && request.method === 'GET') {
+      const exp = Number(url.searchParams.get('exp') || 0);
+      const sig = url.searchParams.get('sig') || '';
+      if (!env.BITHUMAN_API_SECRET || !exp || Date.now() > exp) return new Response('Forbidden', { status: 403 });
+      const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.BITHUMAN_API_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+      const expectedBytes = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode('bithuman-test-audio:' + exp)));
+      const expected = Array.from(expectedBytes, b => b.toString(16).padStart(2, '0')).join('');
+      if (sig !== expected) return new Response('Forbidden', { status: 403 });
+      if (!env.ELEVENLABS_API_KEY) return new Response('Unavailable', { status: 503 });
+      const agentId = env.NAGI_ELEVENLABS_AGENT_ID || 'agent_8501m0nvtj12ea5vnc21ck26v9sp';
+      const cfg = await fetch('https://api.elevenlabs.io/v1/convai/agents/' + agentId, { headers: { 'xi-api-key': env.ELEVENLABS_API_KEY } });
+      if (!cfg.ok) return new Response('Unavailable', { status: 502 });
+      const agent = await cfg.json();
+      const voiceId = agent?.conversation_config?.tts?.voice_id;
+      if (!voiceId) return new Response('Unavailable', { status: 502 });
+      const speech = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + encodeURIComponent(voiceId) + '?output_format=mp3_44100_128', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'xi-api-key': env.ELEVENLABS_API_KEY },
+        body: JSON.stringify({ text: 'こんにちは。凪の声で、リップシンクの動作を確認しています。', model_id: agent?.conversation_config?.tts?.model_id || 'eleven_multilingual_v2' }),
+      });
+      if (!speech.ok) return new Response('Unavailable', { status: 502 });
+      return new Response(speech.body, { headers: { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store' } });
+    }
+
+    if (url.pathname === '/bithuman-test-render') {
+      if (request.method === 'OPTIONS') {
+        if (!allowedOrigin) return new Response(null, { status: 403 });
+        return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': allowedOrigin, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Vary': 'Origin' } });
+      }
+      if (!allowedOrigin) return new Response('Forbidden', { status: 403 });
+      if (request.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!env.BITHUMAN_API_SECRET) return Response.json({ ok: false, error: 'missing_bithuman_secret' }, { status: 500, headers: { 'Access-Control-Allow-Origin': allowedOrigin } });
+      const exp = Date.now() + 120000;
+      const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.BITHUMAN_API_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+      const sigBytes = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode('bithuman-test-audio:' + exp)));
+      const sig = Array.from(sigBytes, b => b.toString(16).padStart(2, '0')).join('');
+      const audioUrl = url.origin + '/bithuman-test-audio?exp=' + exp + '&sig=' + sig;
+      const upstream = await fetch('https://api.bithuman.ai/v1/video/generate', {
+        method: 'POST',
+        headers: { 'api-secret': env.BITHUMAN_API_SECRET, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'essence-2', agent_code: 'A52DHS2219', input: { type: 'audio', audio_url: audioUrl }, wait: true }),
+      });
+      let data = null; try { data = await upstream.json(); } catch {}
+      return Response.json({ ok: upstream.ok, upstream_status: upstream.status, status: data?.status || null, job_id: data?.job_id || null, video_url: data?.video_url || null, error: upstream.ok ? null : (data?.error || data?.message || 'render_failed') }, { status: upstream.ok ? 200 : upstream.status, headers: { 'Access-Control-Allow-Origin': allowedOrigin, 'Cache-Control': 'no-store', 'Vary': 'Origin' } });
+    }
+
     if (url.pathname === '/bithuman-health') {
       if (request.method === 'OPTIONS') {
         if (!allowedOrigin) return new Response(null, { status: 403 });
