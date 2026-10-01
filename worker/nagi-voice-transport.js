@@ -82,6 +82,50 @@ export default {
       });
     }
 
+    if (url.pathname === '/spatius-config') {
+      if (!allowedOrigin) return new Response('Forbidden', { status: 403 });
+      return Response.json({
+        app_id: 'app_mupg5qzm_1eouf3u',
+        avatar_id: '18a01afe-7870-4934-a063-1bd7f9ceb4ac',
+        region: 'auto',
+      }, {
+        headers: { 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': allowedOrigin, 'Vary': 'Origin' },
+      });
+    }
+
+    if (url.pathname === '/spatius-session-token') {
+      if (request.method === 'OPTIONS') {
+        if (!allowedOrigin) return new Response(null, { status: 403 });
+        return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': allowedOrigin, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Vary': 'Origin' } });
+      }
+      if (!allowedOrigin) return new Response('Forbidden', { status: 403 });
+      if (request.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!env.SPATIUS_API_KEY) return Response.json({ ok: false, error: 'missing_spatius_secret' }, { status: 500 });
+
+      const expireAt = Math.floor(Date.now() / 1000) + 55 * 60;
+      const tokenResponse = await fetch('https://console.us-west.spatius.ai/v1/console/session-tokens', {
+        method: 'POST',
+        headers: { 'X-Api-Key': env.SPATIUS_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expireAt, modelVersion: '' }),
+      });
+      let payload = null;
+      try { payload = await tokenResponse.json(); } catch { payload = null; }
+      const sessionToken = payload?.sessionKey || payload?.sessionToken || payload?.token
+        || payload?.data?.sessionKey || payload?.data?.sessionToken || payload?.data?.token;
+      if (!tokenResponse.ok || payload?.errors || !sessionToken) {
+        return Response.json({ ok: false, error: 'spatius_session_token_failed', status: tokenResponse.status }, { status: 502 });
+      }
+      return Response.json({
+        session_token: sessionToken,
+        expires_at: new Date(expireAt * 1000).toISOString(),
+        app_id: 'app_mupg5qzm_1eouf3u',
+        avatar_id: '18a01afe-7870-4934-a063-1bd7f9ceb4ac',
+        region: 'auto',
+      }, {
+        headers: { 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': allowedOrigin, 'Vary': 'Origin' },
+      });
+    }
+
     if (url.pathname === '/scribe-token') {
       if (request.method === 'OPTIONS') {
         if (!allowedOrigin) return new Response(null, { status: 403 });
