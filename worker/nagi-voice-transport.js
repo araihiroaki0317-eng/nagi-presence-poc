@@ -1,6 +1,7 @@
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import { createSpeechEngineTransport } from '../runtime/speech-engine-transport.js';
 import { verifySpeechEngineJwt } from '../runtime/speech-engine-auth.js';
+import { handleBithumanLive } from '../runtime/bithuman-live-server.js';
 
 function jsonSend(socket, message) {
   socket.send(JSON.stringify(message));
@@ -50,6 +51,8 @@ export class ObservabilityEntrypoint extends WorkerEntrypoint {
 
 export default {
   async fetch(request, env) {
+    const liveResponse = await handleBithumanLive(request, env);
+    if (liveResponse) return liveResponse;
     const url = new URL(request.url);
     const origin = request.headers.get('Origin') || '';
     const allowedOrigin = origin === 'https://araihiroaki0317-eng.github.io' ? origin : '';
