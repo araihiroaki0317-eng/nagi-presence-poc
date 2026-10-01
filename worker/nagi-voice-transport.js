@@ -144,6 +144,30 @@ export default {
       return Response.json({ token: payload.token }, { headers: { 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': allowedOrigin, 'Vary': 'Origin' } });
     }
 
+    if (url.pathname === '/bithuman-health') {
+      if (request.method === 'OPTIONS') {
+        if (!allowedOrigin) return new Response(null, { status: 403 });
+        return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': allowedOrigin, 'Access-Control-Allow-Methods': 'GET, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Vary': 'Origin' } });
+      }
+      if (!allowedOrigin) return new Response('Forbidden', { status: 403 });
+      if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      if (!env.BITHUMAN_API_SECRET) return Response.json({ ok: false, service: 'bithuman', configured: false, error: 'missing_bithuman_secret' }, { status: 500, headers: { 'Access-Control-Allow-Origin': allowedOrigin, 'Vary': 'Origin' } });
+
+      const validation = await fetch('https://api.bithuman.ai/v1/validate', {
+        method: 'POST',
+        headers: { 'api-secret': env.BITHUMAN_API_SECRET },
+      });
+      let payload = null;
+      try { payload = await validation.json(); } catch {}
+      return Response.json({
+        ok: validation.ok && payload?.valid === true,
+        service: 'bithuman',
+        configured: true,
+        authenticated: payload?.valid === true,
+        upstream_status: validation.status,
+      }, { status: validation.ok && payload?.valid === true ? 200 : 502, headers: { 'Access-Control-Allow-Origin': allowedOrigin, 'Cache-Control': 'no-store', 'Vary': 'Origin' } });
+    }
+
     if (url.pathname === '/tts') {
       if (request.method === 'OPTIONS') {
         if (!allowedOrigin) return new Response(null, { status: 403 });
