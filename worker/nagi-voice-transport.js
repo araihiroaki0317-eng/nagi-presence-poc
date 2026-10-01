@@ -144,6 +144,62 @@ export default {
       return Response.json({ token: payload.token }, { headers: { 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': allowedOrigin, 'Vary': 'Origin' } });
     }
 
+    if (url.pathname === '/bithuman-poc-audio') {
+      if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      if (!env.ELEVENLABS_API_KEY) return new Response('TTS unavailable', { status: 503 });
+      const agentId = env.NAGI_ELEVENLABS_AGENT_ID || 'agent_8501m0nvtj12ea5vnc21ck26v9sp';
+      const agentResponse = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agentId}`, {
+        headers: { 'xi-api-key': env.ELEVENLABS_API_KEY },
+      });
+      if (!agentResponse.ok) return new Response('Voice config unavailable', { status: 502 });
+      const agent = await agentResponse.json();
+      const voiceId = agent?.conversation_config?.tts?.voice_id;
+      if (!voiceId) return new Response('Voice unavailable', { status: 502 });
+      const speech = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'xi-api-key': env.ELEVENLABS_API_KEY },
+        body: JSON.stringify({
+          text: 'こんにちは。凪の声で、リップシンクの動作を確認しています。',
+          model_id: agent?.conversation_config?.tts?.model_id || 'eleven_multilingual_v2',
+        }),
+      });
+      if (!speech.ok) return new Response('TTS failed', { status: 502 });
+      return new Response(speech.body, { status: 200, headers: { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store' } });
+    }
+
+    if (url.pathname === '/bithuman-poc-video') {
+      if (request.method === 'OPTIONS') {
+        if (!allowedOrigin) return new Response(null, { status: 403 });
+        return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': allowedOrigin, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Vary': 'Origin' } });
+      }
+      if (!allowedOrigin) return new Response('Forbidden', { status: 403 });
+      if (request.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!env.BITHUMAN_API_SECRET) return Response.json({ ok: false, error: 'missing_bithuman_secret' }, { status: 500, headers: { 'Access-Control-Allow-Origin': allowedOrigin, 'Vary': 'Origin' } });
+
+      const audioUrl = `${url.origin}/bithuman-poc-audio`;
+      const rendered = await fetch('https://api.bithuman.ai/v1/video/generate', {
+        method: 'POST',
+        headers: { 'api-secret': env.BITHUMAN_API_SECRET, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'essence-2',
+          agent_code: 'A52DHS2219',
+          input: { type: 'audio', audio_url: audioUrl },
+          wait: true,
+        }),
+      });
+      let payload = null;
+      try { payload = await rendered.json(); } catch {}
+      return Response.json({
+        ok: rendered.ok,
+        service: 'bithuman',
+        upstream_status: rendered.status,
+        status: payload?.status || null,
+        job_id: payload?.job_id || null,
+        video_url: payload?.video_url || null,
+        error: rendered.ok ? null : (payload?.error || payload?.message || 'bithuman_render_failed'),
+      }, { status: rendered.ok ? 200 : rendered.status, headers: { 'Access-Control-Allow-Origin': allowedOrigin, 'Cache-Control': 'no-store', 'Vary': 'Origin' } });
+    }
+
     if (url.pathname === '/bithuman-health') {
       if (request.method === 'OPTIONS') {
         if (!allowedOrigin) return new Response(null, { status: 403 });
