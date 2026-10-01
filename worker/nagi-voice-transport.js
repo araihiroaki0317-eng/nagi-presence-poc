@@ -187,7 +187,17 @@ export default {
         body: JSON.stringify({ model: 'essence-2', agent_code: 'A52DHS2219', input: { type: 'audio', audio_url: audioUrl }, wait: true }),
       });
       let data = null; try { data = await upstream.json(); } catch {}
-      return Response.json({ ok: upstream.ok, upstream_status: upstream.status, status: data?.status || null, job_id: data?.job_id || null, video_url: data?.video_url || null, error: upstream.ok ? null : (data?.error || data?.message || 'render_failed') }, { status: upstream.ok ? 200 : upstream.status, headers: { 'Access-Control-Allow-Origin': allowedOrigin, 'Cache-Control': 'no-store', 'Vary': 'Origin' } });
+      return Response.json({ ok: upstream.ok, upstream_status: upstream.status, status: data?.status || null, job_id: data?.job_id || null, video_url: data?.video_url || null, error: data?.error || data?.message || data?.detail || (data?.status === 'failed' ? 'render_failed' : null), details: data?.details || data?.data || null }, { status: upstream.ok ? 200 : upstream.status, headers: { 'Access-Control-Allow-Origin': allowedOrigin, 'Cache-Control': 'no-store', 'Vary': 'Origin' } });
+    }
+
+    if (url.pathname.startsWith('/bithuman-test-render-status/')) {
+      if (!allowedOrigin) return new Response('Forbidden', { status: 403 });
+      if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      if (!env.BITHUMAN_API_SECRET) return Response.json({ ok: false, error: 'missing_bithuman_secret' }, { status: 500, headers: { 'Access-Control-Allow-Origin': allowedOrigin } });
+      const jobId = url.pathname.split('/').pop();
+      const upstream = await fetch('https://api.bithuman.ai/v1/video/' + encodeURIComponent(jobId), { headers: { 'api-secret': env.BITHUMAN_API_SECRET } });
+      let data = null; try { data = await upstream.json(); } catch {}
+      return Response.json({ ok: upstream.ok, upstream_status: upstream.status, result: data }, { status: upstream.ok ? 200 : upstream.status, headers: { 'Access-Control-Allow-Origin': allowedOrigin, 'Cache-Control': 'no-store', 'Vary': 'Origin' } });
     }
 
     if (url.pathname === '/bithuman-health') {
