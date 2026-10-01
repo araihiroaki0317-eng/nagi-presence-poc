@@ -1,0 +1,6 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>bitHuman Health</title><style>body{font-family:system-ui;margin:2rem;background:#111;color:#eee}pre{white-space:pre-wrap;padding:1rem;background:#1d1d1d;border-radius:12px}</style></head><body><h1>bitHuman Health</h1><pre id="out">checking…</pre><script>
+fetch('https://nagi-voice-transport.arai-hiroaki0317.workers.dev/bithuman-health')
+ .then(async r=>({status:r.status,body:await r.json()}))
+ .then(x=>document.querySelector('#out').textContent=JSON.stringify(x,null,2))
+ .catch(e=>document.querySelector('#out').textContent='ERROR: '+e.message);
+</script></body></html>
