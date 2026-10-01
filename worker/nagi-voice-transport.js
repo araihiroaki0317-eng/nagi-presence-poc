@@ -6,6 +6,32 @@ function jsonSend(socket, message) {
   socket.send(JSON.stringify(message));
 }
 
+// ElevenLabs pcm_16000 is mono signed 16-bit little-endian PCM. Supply
+// explicit RIFF sizes so bitHuman can determine duration without ffprobe.
+export function pcm16ToWav(pcm, sampleRate = 16000) {
+  if (!pcm.byteLength || pcm.byteLength % 2 || pcm.byteLength > sampleRate * 2 * 120) {
+    throw new Error('invalid_test_audio_pcm');
+  }
+  const wav = new Uint8Array(44 + pcm.byteLength);
+  const view = new DataView(wav.buffer);
+  const label = (offset, value) => wav.set(new TextEncoder().encode(value), offset);
+  label(0, 'RIFF');
+  view.setUint32(4, 36 + pcm.byteLength, true);
+  label(8, 'WAVE');
+  label(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  label(36, 'data');
+  view.setUint32(40, pcm.byteLength, true);
+  wav.set(new Uint8Array(pcm), 44);
+  return wav;
+}
+
 export class ObservabilityEntrypoint extends WorkerEntrypoint {
   async getElevenLabsUsage({ startTime, endTime, intervalSeconds = 3600, timeZone = 'Asia/Tokyo' } = {}) {
     if (!this.env.ELEVENLABS_API_KEY) throw new Error('missing_elevenlabs_secret');
@@ -144,7 +170,7 @@ export default {
       return Response.json({ token: payload.token }, { headers: { 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': allowedOrigin, 'Vary': 'Origin' } });
     }
 
-    if (url.pathname === '/bithuman-test-audio' && request.method === 'GET') {
+    if (['/bithuman-test-audio', '/bithuman-test-audio.wav'].includes(url.pathname) && request.method === 'GET') {
       const exp = Number(url.searchParams.get('exp') || 0);
       const sig = url.searchParams.get('sig') || '';
       if (!env.BITHUMAN_API_SECRET || !exp || Date.now() > exp) return new Response('Forbidden', { status: 403 });
@@ -159,13 +185,16 @@ export default {
       const agent = await cfg.json();
       const voiceId = agent?.conversation_config?.tts?.voice_id;
       if (!voiceId) return new Response('Unavailable', { status: 502 });
-      const speech = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + encodeURIComponent(voiceId) + '?output_format=mp3_44100_128', {
+      const speech = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + encodeURIComponent(voiceId) + '?output_format=pcm_16000', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'xi-api-key': env.ELEVENLABS_API_KEY },
         body: JSON.stringify({ text: 'こんにちは。凪の声で、リップシンクの動作を確認しています。', model_id: agent?.conversation_config?.tts?.model_id || 'eleven_multilingual_v2' }),
       });
       if (!speech.ok) return new Response('Unavailable', { status: 502 });
-      return new Response(speech.body, { headers: { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store' } });
+      let wav;
+      try { wav = pcm16ToWav(await speech.arrayBuffer()); }
+      catch { return new Response('Invalid audio', { status: 502 }); }
+      return new Response(wav, { headers: { 'Content-Type': 'audio/wav', 'Content-Length': String(wav.byteLength), 'Cache-Control': 'no-store' } });
     }
 
     if (url.pathname === '/bithuman-test-render') {
@@ -176,18 +205,18 @@ export default {
       if (!allowedOrigin) return new Response('Forbidden', { status: 403 });
       if (request.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!env.BITHUMAN_API_SECRET) return Response.json({ ok: false, error: 'missing_bithuman_secret' }, { status: 500, headers: { 'Access-Control-Allow-Origin': allowedOrigin } });
-      const exp = Date.now() + 120000;
+      const exp = Date.now() + 600000;
       const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.BITHUMAN_API_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
       const sigBytes = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode('bithuman-test-audio:' + exp)));
       const sig = Array.from(sigBytes, b => b.toString(16).padStart(2, '0')).join('');
-      const audioUrl = url.origin + '/bithuman-test-audio?exp=' + exp + '&sig=' + sig;
+      const audioUrl = url.origin + '/bithuman-test-audio.wav?exp=' + exp + '&sig=' + sig;
       const upstream = await fetch('https://api.bithuman.ai/v1/video/generate', {
         method: 'POST',
         headers: { 'api-secret': env.BITHUMAN_API_SECRET, 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: 'essence-2', agent_code: 'A52DHS2219', input: { type: 'audio', audio_url: audioUrl }, wait: true }),
       });
       let data = null; try { data = await upstream.json(); } catch {}
-      return Response.json({ ok: upstream.ok, upstream_status: upstream.status, status: data?.status || null, job_id: data?.job_id || null, video_url: data?.video_url || null, error: data?.error || data?.message || data?.detail || (data?.status === 'failed' ? 'render_failed' : null), details: data?.details || data?.data || null }, { status: upstream.ok ? 200 : upstream.status, headers: { 'Access-Control-Allow-Origin': allowedOrigin, 'Cache-Control': 'no-store', 'Vary': 'Origin' } });
+      return Response.json({ ok: upstream.ok && data?.success !== false && data?.status !== 'failed', upstream_status: upstream.status, status: data?.status || null, job_id: data?.job_id || null, video_url: data?.video_url || null, error: data?.error || data?.message || data?.detail || (data?.status === 'failed' ? 'render_failed' : null), details: data?.details || data?.data || null, audio_format: 'wav_pcm_s16le_16000_mono' }, { status: upstream.ok ? 200 : upstream.status, headers: { 'Access-Control-Allow-Origin': allowedOrigin, 'Cache-Control': 'no-store', 'Vary': 'Origin' } });
     }
 
     if (url.pathname.startsWith('/bithuman-test-render-status/')) {
@@ -195,6 +224,7 @@ export default {
       if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 });
       if (!env.BITHUMAN_API_SECRET) return Response.json({ ok: false, error: 'missing_bithuman_secret' }, { status: 500, headers: { 'Access-Control-Allow-Origin': allowedOrigin } });
       const jobId = url.pathname.split('/').pop();
+      if (!/^vid_[a-zA-Z0-9_-]{1,100}$/.test(jobId)) return Response.json({ ok: false, error: 'invalid_job_id' }, { status: 400, headers: { 'Access-Control-Allow-Origin': allowedOrigin } });
       const upstream = await fetch('https://api.bithuman.ai/v1/video/' + encodeURIComponent(jobId), { headers: { 'api-secret': env.BITHUMAN_API_SECRET } });
       let data = null; try { data = await upstream.json(); } catch {}
       return Response.json({ ok: upstream.ok, upstream_status: upstream.status, result: data }, { status: upstream.ok ? 200 : upstream.status, headers: { 'Access-Control-Allow-Origin': allowedOrigin, 'Cache-Control': 'no-store', 'Vary': 'Origin' } });
@@ -221,6 +251,7 @@ export default {
         configured: true,
         authenticated: payload?.valid === true,
         upstream_status: validation.status,
+        test_audio_format: 'wav_pcm_s16le_16000_mono',
       }, { status: validation.ok && payload?.valid === true ? 200 : 502, headers: { 'Access-Control-Allow-Origin': allowedOrigin, 'Cache-Control': 'no-store', 'Vary': 'Origin' } });
     }
 
