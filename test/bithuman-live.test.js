@@ -107,3 +107,15 @@ test('missing playback confirmation is an error, not success', async () => {
   const output = createBithumanOutput({ room, endpoint: 'https://tts.example', timeoutMs: 5, fetchImpl: async () => new Response(Uint8Array.of(1, 2)) });
   assert.equal((await output.speak('test')).ok, false);
 });
+
+
+test('verification distinguishes invalid URLs, network errors and authentication failures without leaking values', async t => {
+  const invalid = await (await handleBithumanLive(request('verify'), { ...env, LIVEKIT_URL: 'invalid' })).json();
+  assert.equal(invalid.error, 'invalid_livekit_url');
+  t.mock.method(globalThis, 'fetch', async () => { throw new Error('sensitive upstream details'); });
+  const network = await (await handleBithumanLive(request('verify'), env)).json();
+  assert.deepEqual(network, { ok: false, error: 'livekit_network_request_failed' });
+  t.mock.method(globalThis, 'fetch', async () => new Response('sensitive details', { status: 401 }));
+  const auth = await (await handleBithumanLive(request('verify'), env)).json();
+  assert.deepEqual(auth, { ok: false, error: 'livekit_ListRooms_http_401' });
+});

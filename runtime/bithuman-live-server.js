@@ -30,16 +30,22 @@ async function readControl(env, value) {
   } catch { throw new Error('invalid_session_control'); }
 }
 function liveKitURL(env) {
-  const url = new URL(env.LIVEKIT_URL);
+  let url;
+  try { url = new URL(env.LIVEKIT_URL); } catch { throw new Error('invalid_livekit_url'); }
   if (url.protocol !== 'wss:' || url.username || url.password || url.search || url.hash || url.pathname !== '/') throw new Error('invalid_livekit_url');
   return url;
 }
 async function roomCall(env, method, body, video) {
   const base = liveKitURL(env);
   base.protocol = 'https:';
-  const response = await fetch(new URL('/twirp/livekit.RoomService/' + method, base), {
-    method: 'POST', headers: { Authorization: 'Bearer ' + await signLiveKit(env, { video }), 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-  });
+  let token;
+  try { token = await signLiveKit(env, { video }); } catch { throw new Error('livekit_token_signing_failed'); }
+  let response;
+  try {
+    response = await fetch(new URL('/twirp/livekit.RoomService/' + method, base), {
+      method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+  } catch { throw new Error('livekit_network_request_failed'); }
   if (!response.ok && !(method === 'DeleteRoom' && response.status === 404)) throw new Error('livekit_' + method + '_http_' + response.status);
   return response;
 }
@@ -96,7 +102,7 @@ export async function handleBithumanLive(request, env) {
     return send({ ok: true, session_id: result.session_id, model: result.model, control: await controlToken(env, { room: claims.room, session_id: result.session_id }) });
   } catch (error) {
     const message = error?.message || '';
-    const safe = /^(invalid_session_control|invalid_livekit_url|livekit_[A-Za-z]+_http_\d+)$/.test(message) ? message : 'live_session_request_failed';
+    const safe = /^(invalid_session_control|invalid_livekit_url|livekit_token_signing_failed|livekit_network_request_failed|livekit_[A-Za-z]+_http_\d+)$/.test(message) ? message : 'live_session_request_failed';
     return send({ ok: false, error: safe }, safe === 'invalid_session_control' ? 403 : 502);
   }
 }
