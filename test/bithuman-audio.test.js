@@ -37,7 +37,7 @@ test('signed audio is fetched as PCM and served as WAV; failures remain visible'
   t.mock.method(globalThis, 'fetch', async (url, options) => {
     if (url === 'https://api.bithuman.ai/v1/video/generate') {
       const body = JSON.parse(options.body);
-      assert.equal(body.agent_code, 'A52DHS2219');
+      assert.equal(body.agent_code, 'A17VAN5175');
       assert.equal(body.model, 'essence-2');
       audioUrl = body.input.audio_url;
       assert.equal(new URL(audioUrl).pathname, '/bithuman-test-audio.wav');
