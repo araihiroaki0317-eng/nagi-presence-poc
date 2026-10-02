@@ -60,7 +60,7 @@ export async function handleBithumanLive(request, env) {
   if (!['health', 'verify', 'prepare', 'start', 'stop'].includes(action)) return send({ ok: false, error: 'not_found' }, 404);
   if (request.method !== (['health', 'verify'].includes(action) ? 'GET' : 'POST')) return send({ ok: false, error: 'method_not_allowed' }, 405);
   const missing = ['LIVEKIT_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET', 'BITHUMAN_API_SECRET', 'ELEVENLABS_API_KEY'].filter(name => !env[name]);
-  if (action === 'health') return send({ ok: missing.length === 0, configured: missing.length === 0, missing, agent_code: env.BITHUMAN_AGENT_CODE || 'A52DHS2219', max_session_seconds: 90 });
+  if (action === 'health') return send({ ok: missing.length === 0, configured: missing.length === 0, missing, agent_code: env.BITHUMAN_AGENT_CODE || 'A17VAN5175', max_session_seconds: 90 });
   if (missing.length) return send({ ok: false, error: 'missing_configuration', missing }, 503);
   try {
     liveKitURL(env);
@@ -92,7 +92,7 @@ export async function handleBithumanLive(request, env) {
     const avatarToken = await signLiveKit(env, { sub: AVATAR, kind: 'agent', attributes: { 'lk.publish_on_behalf': SENDER }, video: { roomJoin: true, room: claims.room, canPublish: true, canPublishData: true, canSubscribe: true } });
     const response = await fetch('https://api.bithuman.ai/v1/runtime-tokens/request', {
       method: 'POST', headers: { 'api-secret': env.BITHUMAN_API_SECRET, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode: 'gpu', model: 'essence-2', agent_id: env.BITHUMAN_AGENT_CODE || 'A52DHS2219', livekit_url: env.LIVEKIT_URL, livekit_token: avatarToken, room_name: claims.room }),
+      body: JSON.stringify({ mode: 'gpu', model: 'essence-2', agent_id: env.BITHUMAN_AGENT_CODE || 'A17VAN5175', livekit_url: env.LIVEKIT_URL, livekit_token: avatarToken, room_name: claims.room }),
     });
     let result; try { result = await response.json(); } catch { result = null; }
     if (!response.ok || result?.avatar_session_started !== true || !result?.session_id) {
