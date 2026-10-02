@@ -6,6 +6,23 @@ import { RealtimeVoiceInput } from './runtime/voice-input.js';
 import { createBithumanOutput } from './runtime/bithuman-live-output.js';
 const W = 'https://nagi-voice-transport.arai-hiroaki0317.workers.dev';
 const $ = id => document.getElementById(id);
+function appendTranscript(text) {
+  const transcript = $('transcript');
+  const follow = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight <= 40;
+  const line = document.createElement('div');
+  line.textContent = text;
+  transcript.append(line);
+  if (follow) transcript.scrollTop = transcript.scrollHeight;
+  $('latest').hidden = follow;
+}
+$('transcript').addEventListener('scroll', () => {
+  const transcript = $('transcript');
+  if (transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight <= 40) $('latest').hidden = true;
+});
+$('latest').onclick = () => {
+  $('transcript').scrollTop = $('transcript').scrollHeight;
+  $('latest').hidden = true;
+};
 const pendingKey = 'nagi.bithuman.pending-stop.v1';
 const attention = createLiveAttention();
 let muted = false, listenTask = null, sessionGeneration = 0;
@@ -63,7 +80,7 @@ async function sendText(text) {
   busy = true; clearTimeout(micTimer); controls();
   await voiceInput?.stop();
   $('text').value = '';
-  $('transcript').textContent += 'ヒロ: ' + text.trim() + '\n';
+  appendTranscript('ヒロ: ' + text.trim());
   void prefetchScribeToken();
   status('考えています。');
   const replyStartedAt = performance.now();
@@ -119,7 +136,7 @@ $('start').onclick = async () => {
     adapter = new ElevenLabsConversationAdapter({ Conversation, agentId: 'agent_8501m0nvtj12ea5vnc21ck26v9sp', memoryConfig: { enabled: true, endpoint: 'https://nagi-memory-adapter.arai-hiroaki0317.workers.dev', userId: 'hiro', threadId: 'nagi-poc-002' }, ttsOutput: output });
     await adapter.start(CONVERSATION_PROFILES.TEXT_AUDIO, {
       onTiming: timing,
-      onMessage: event => { if (event.source === 'ai') $('transcript').textContent += '凪: ' + event.message + '\n'; },
+      onMessage: event => { if (event.source === 'ai') appendTranscript('凪: ' + event.message); },
       onError: error => { log(error.message); void endSession('応答エラーのため終了しました。'); },
       onTtsError: error => { log(error.error); void endSession('音声の再生を確認できなかったため終了しました。'); },
     });
@@ -145,7 +162,7 @@ $('start').onclick = async () => {
     } });
     status('凪が挨拶しています。');
     const greeting = 'おはよう、ひろくーん。今日は何企んでるの？';
-    $('transcript').textContent += '凪: ' + greeting + '\n';
+    appendTranscript('凪: ' + greeting);
     const greeted = await output.speak(greeting); check();
     if (!greeted?.ok) throw new Error('greeting_playback_failed');
     connected = true; busy = false; attention.engage(); controls(); await listenAutomatically();
@@ -167,7 +184,7 @@ async function handleTranscript(event) {
   if (decision.action === 'ignore') { status('呼びかけ待ちです。「凪」と呼んでください。'); return; }
   if (decision.action === 'respond') { await sendText(decision.text); return; }
   busy = true; clearTimeout(micTimer); controls(); await voiceInput.stop();
-  $('transcript').textContent += '凪: ' + decision.text + '\n';
+  appendTranscript('凪: ' + decision.text);
   const result = await output.speak(decision.text);
   if (!result.ok) { await endSession('呼びかけへの応答を再生できませんでした。'); return; }
   busy = false; controls();
