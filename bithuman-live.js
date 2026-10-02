@@ -128,7 +128,7 @@ $('start').onclick = async () => {
       let closed = false;
       const token = await prefetchScribeToken(); tokenPromise = null;
       if (!connected || stopping || generation !== sessionGeneration) throw new Error('session_ended');
-      const connection = Scribe.connect({ token, modelId: 'scribe_v2_realtime', languageCode: 'ja', commitStrategy: CommitStrategy.VAD, vadSilenceThresholdSecs: 0.6, microphone: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      const connection = Scribe.connect({ token, modelId: 'scribe_v2_realtime', languageCode: 'ja', commitStrategy: CommitStrategy.VAD, vadSilenceThresholdSecs: 1.0, microphone: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
       connection.on(RealtimeEvents.SESSION_STARTED, () => {
         if (closed || !connected || stopping || generation !== sessionGeneration) { connection.close(); return; }
         log('マイク準備完了まで: ' + ((performance.now() - micRequestedAt) / 1000).toFixed(1) + '秒');
