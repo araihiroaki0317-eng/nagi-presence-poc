@@ -226,7 +226,7 @@ export default {
       const upstream = await fetch('https://api.bithuman.ai/v1/video/generate', {
         method: 'POST',
         headers: { 'api-secret': env.BITHUMAN_API_SECRET, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'essence-2', agent_code: 'A52DHS2219', input: { type: 'audio', audio_url: audioUrl }, wait: true }),
+        body: JSON.stringify({ model: 'essence-2', agent_code: 'A17VAN5175', input: { type: 'audio', audio_url: audioUrl }, wait: true }),
       });
       let data = null; try { data = await upstream.json(); } catch {}
       return Response.json({ ok: upstream.ok && data?.success !== false && data?.status !== 'failed', upstream_status: upstream.status, status: data?.status || null, job_id: data?.job_id || null, video_url: data?.video_url || null, error: data?.error || data?.message || data?.detail || (data?.status === 'failed' ? 'render_failed' : null), details: data?.details || data?.data || null, audio_format: 'wav_pcm_s16le_16000_mono' }, { status: upstream.ok ? 200 : upstream.status, headers: { 'Access-Control-Allow-Origin': allowedOrigin, 'Cache-Control': 'no-store', 'Vary': 'Origin' } });
