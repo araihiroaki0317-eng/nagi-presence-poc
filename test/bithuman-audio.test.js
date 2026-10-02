@@ -78,11 +78,29 @@ test('signed audio is fetched as PCM and served as WAV; failures remain visible'
 test('live TTS forwards stored Agent tuning to ElevenLabs', async t => {
   t.mock.method(globalThis, 'fetch', async (url, options) => {
     if (url.includes('/convai/agents/')) return Response.json({ conversation_config: { tts: { voice_id: 'voice-test', model_id: 'eleven_multilingual_v2', stability: 0, speed: 0.9, similarity_boost: 0.8 } } });
-    assert.ok(url.includes('/text-to-speech/voice-test?output_format=pcm_16000'));
+    assert.ok(url.includes('/text-to-speech/voice-test/stream?output_format=pcm_16000'));
     assert.deepEqual(JSON.parse(options.body), { text: 'こんにちは', model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0, similarity_boost: 0.8, speed: 0.9 } });
     return new Response(new Uint8Array(320));
   });
   const response = await worker.fetch(new Request('https://worker.example/tts', { method: 'POST', headers: { Origin: 'https://araihiroaki0317-eng.github.io', 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'こんにちは', output_format: 'pcm_16000' }) }), { ELEVENLABS_API_KEY: 'test-only' });
   assert.equal(response.status, 200);
   assert.equal((await response.arrayBuffer()).byteLength, 320);
+});
+
+test('live TTS forwards the first audio bytes before upstream synthesis completes', async t => {
+  let upstream;
+  t.mock.method(globalThis, 'fetch', async url => {
+    if (url.includes('/convai/agents/')) return Response.json({ conversation_config: { tts: { voice_id: 'voice-test' } } });
+    assert.ok(url.includes('/voice-test/stream?'));
+    return new Response(new ReadableStream({ start(controller) { upstream = controller; controller.enqueue(Uint8Array.of(1, 2)); } }));
+  });
+  const response = await worker.fetch(new Request('https://worker.example/tts', {
+    method: 'POST', headers: { Origin: 'https://araihiroaki0317-eng.github.io', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: '長い返答の先頭です。', output_format: 'pcm_16000' }),
+  }), { ELEVENLABS_API_KEY: 'test-only' });
+  const reader = response.body.getReader();
+  assert.deepEqual(Array.from((await reader.read()).value), [1, 2]);
+  upstream.enqueue(Uint8Array.of(3, 4)); upstream.close();
+  assert.deepEqual(Array.from((await reader.read()).value), [3, 4]);
+  assert.equal((await reader.read()).done, true);
 });
