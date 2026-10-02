@@ -6,13 +6,26 @@ import { createBithumanOutput } from './runtime/bithuman-live-output.js';
 const W = 'https://nagi-voice-transport.arai-hiroaki0317.workers.dev';
 const $ = id => document.getElementById(id);
 const pendingKey = 'nagi.bithuman.pending-stop.v1';
-let viewer, sender, adapter, output, voiceInput, control = '', connected = false, busy = false, stopping = false, launching = false, cancelLaunch = false, timer, micTimer;
+let micRequestedAt = 0;
+let viewer, sender, adapter, output, voiceInput, control = '', connected = false, busy = false, stopping = false, launching = false, cancelLaunch = false, timer, micTimer, micStarting = false, tokenPromise = null, tokenCreatedAt = 0;
 const status = text => { $('status').textContent = text; };
 const log = text => { $('debug').textContent += text + '\n'; };
 function controls() {
   $('start').disabled = connected || busy || stopping || launching || Boolean(control);
   $('stop').disabled = !control || stopping;
-  for (const id of ['mic', 'text', 'send']) $(id).disabled = !connected || busy || stopping;
+  for (const id of ['mic', 'text', 'send']) $(id).disabled = !connected || busy || stopping || micStarting;
+}
+function prefetchScribeToken() {
+  if (!tokenPromise || Date.now() - tokenCreatedAt > 50000) {
+    tokenCreatedAt = Date.now();
+    tokenPromise = fetch(W + '/scribe-token', { method: 'POST' }).then(async response => {
+      const data = await response.json();
+      if (!response.ok || !data.token) throw new Error('scribe_token_failed');
+      return data.token;
+    });
+    tokenPromise.catch(() => {});
+  }
+  return tokenPromise;
 }
 async function call(action, body) {
   const response = await fetch(W + '/bithuman-live/' + action, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), keepalive: action === 'stop' });
@@ -24,7 +37,7 @@ function saveControl(value) { control = value; if (value) localStorage.setItem(p
 async function endSession(message = '終了しました。') {
   if (launching) cancelLaunch = true;
   if (stopping) return;
-  stopping = true; connected = false; clearTimeout(timer); clearTimeout(micTimer); controls();
+  stopping = true; connected = false; micStarting = false; tokenPromise = null; clearTimeout(timer); clearTimeout(micTimer); controls();
   await voiceInput?.stop().catch(() => {});
   await adapter?.end().catch(() => {});
   // Delete the room even if an audio RPC cannot complete.
@@ -45,8 +58,11 @@ async function sendText(text) {
   await voiceInput?.stop();
   $('mic').textContent = '話す'; $('text').value = '';
   $('transcript').textContent += 'ヒロ: ' + text.trim() + '\n';
+  void prefetchScribeToken();
   status('考えています。');
+  const replyStartedAt = performance.now();
   await adapter.sendText(text.trim());
+  log('応答完了まで: ' + ((performance.now() - replyStartedAt) / 1000).toFixed(1) + '秒（再生時間を含む）');
   busy = false; controls();
   if (connected) status('「話す」を押すか、文字を送ってください。');
 }
@@ -72,6 +88,7 @@ $('start').onclick = async () => {
     await viewer.startAudio().catch(() => { $('play').hidden = false; });
     timer = setTimeout(() => void endSession('90秒の接続テストを終了しました。'), prep.max_session_seconds * 1000);
     check();
+    void prefetchScribeToken();
     const start = await call('start', { control }); saveControl(start.control); check();
     log('session: ' + start.session_id + ' / model: ' + start.model);
     await new Promise((resolve, reject) => {
@@ -88,25 +105,40 @@ $('start').onclick = async () => {
       onTtsError: error => { log(error.error); void endSession('音声の再生を確認できなかったため終了しました。'); },
     });
     voiceInput = new RealtimeVoiceInput({ connect: async ({ onPartial, onFinal, onError }) => {
-      const response = await fetch(W + '/scribe-token', { method: 'POST' });
-      const data = await response.json(); if (!response.ok || !data.token) throw new Error('scribe_token_failed');
-      const connection = Scribe.connect({ token: data.token, modelId: 'scribe_v2_realtime', languageCode: 'ja', commitStrategy: CommitStrategy.VAD, vadSilenceThresholdSecs: 1.0, microphone: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      const token = await prefetchScribeToken(); tokenPromise = null;
+      if (!connected || stopping) throw new Error('session_ended');
+      const connection = Scribe.connect({ token, modelId: 'scribe_v2_realtime', languageCode: 'ja', commitStrategy: CommitStrategy.VAD, vadSilenceThresholdSecs: 0.6, microphone: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      connection.on(RealtimeEvents.SESSION_STARTED, () => {
+        if (!connected || stopping) { connection.close(); return; }
+        log('マイク準備完了まで: ' + ((performance.now() - micRequestedAt) / 1000).toFixed(1) + '秒');
+        micStarting = false; controls();
+        $('mic').textContent = '入力を止める'; status('聞いています。話し終えると送信します。');
+      });
       connection.on(RealtimeEvents.PARTIAL_TRANSCRIPT, data => onPartial(data.text));
       connection.on(RealtimeEvents.COMMITTED_TRANSCRIPT, data => onFinal(data.text));
       connection.on(RealtimeEvents.ERROR, onError);
       return { close: () => connection.close() };
     } });
+    status('凪が挨拶しています。');
+    const greeting = 'おはよう、ひろくーん。今日は何企んでるの？';
+    $('transcript').textContent += '凪: ' + greeting + '\n';
+    const greeted = await output.speak(greeting); check();
+    if (!greeted?.ok) throw new Error('greeting_playback_failed');
     connected = true; busy = false; controls(); status('接続しました。「話す」を押して話しかけてください。');
   } catch (error) { log(error.message); await endSession('接続できませんでした: ' + error.message); }
   finally { launching = false; controls(); }
 };
 $('mic').onclick = async () => {
+  if (!connected || busy || stopping || micStarting) return;
   if (voiceInput.active) { await voiceInput.stop(); clearTimeout(micTimer); $('mic').textContent = '話す'; status('音声入力を止めました。'); return; }
+  micStarting = true; controls(); status('マイクを準備しています。');
+  const micStartedAt = performance.now(); micRequestedAt = micStartedAt;
   try {
     await voiceInput.start({ onTranscript: event => { if (event.final) void sendText(event.text); else status('聞いています: ' + event.text); }, onError: error => { log(String(error?.message || error)); void endSession('音声入力エラーのため終了しました。'); } });
-    $('mic').textContent = '入力を止める'; status('聞いています。話し終えると送信します。');
-    micTimer = setTimeout(() => { void voiceInput.stop(); $('mic').textContent = '話す'; status('音声入力を止めました。'); }, 20000);
-  } catch (error) { log(error.message); status('マイクを開始できませんでした。'); }
+    if (!connected || stopping) { await voiceInput.stop(); return; }
+    log('音声入力接続要求まで: ' + ((performance.now() - micStartedAt) / 1000).toFixed(1) + '秒');
+    micTimer = setTimeout(() => { void voiceInput.stop(); micStarting = false; controls(); $('mic').textContent = '話す'; status('音声入力を止めました。'); }, 20000);
+  } catch (error) { micStarting = false; controls(); log(error.message); if (connected) status('マイクを開始できませんでした。'); }
 };
 $('composer').onsubmit = event => { event.preventDefault(); void sendText($('text').value); };
 $('stop').onclick = () => void endSession();
