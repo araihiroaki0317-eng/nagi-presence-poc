@@ -6,7 +6,8 @@
 <video id="avatar" autoplay playsinline muted></video><div id="audio"></div>
 <p id="status">接続設定を確認しています。</p>
 <p>Sofiaの姿で、凪の記憶と声をつなぎます。開始後は利用枠を消費します。画面を開いている間は90秒で自動終了します。</p>
-<div class="row"><button id="start" disabled>会話を開始</button><button id="mic" disabled>話す</button><button id="stop" disabled>終了</button><button id="play" hidden>音声を再生</button></div>
+<div class="row"><button id="start" disabled>会話を開始</button><button id="mic" disabled>マイクをミュート</button><button id="stop" disabled>終了</button><button id="play" hidden>音声を再生</button></div>
+<p>挨拶の後はそのまま話せます。12秒間発話がなければ「凪」と単独で呼びかけて再開します。呼びかけ待ち中も音声認識は動作します。周囲の人の声との識別や、返答中の割り込みには未対応です。</p>
 <form id="composer" class="row"><input id="text" placeholder="文字でも話せます" maxlength="1000" disabled><button id="send" disabled>送信</button></form>
 <div id="transcript" aria-live="polite"></div><details><summary>接続情報</summary><pre id="debug"></pre></details>
 </main><script type="module" src="./bithuman-live.js"></script></body></html>

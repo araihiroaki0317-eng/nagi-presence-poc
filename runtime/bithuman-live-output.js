@@ -1,7 +1,10 @@
 const AVATAR = 'bithuman-avatar-agent';
-export function createBithumanOutput({ room, endpoint, fetchImpl = fetch, timeoutMs = 60000 }) {
+export function createBithumanOutput({ room, endpoint, fetchImpl = fetch, timeoutMs = 60000, onTiming = () => {} }) {
   let active = null;
-  room.registerRpcMethod('lk.playback_started', async () => '');
+  room.registerRpcMethod('lk.playback_started', async ({ callerIdentity }) => {
+    if (callerIdentity === AVATAR && active) onTiming({ stage: 'avatar_playback_started_ms', ms: performance.now() - active.startedAt });
+    return '';
+  });
   room.registerRpcMethod('lk.playback_finished', async ({ callerIdentity }) => {
     if (callerIdentity === AVATAR) active?.finish();
     return '';
@@ -12,7 +15,7 @@ export function createBithumanOutput({ room, endpoint, fetchImpl = fetch, timeou
       const controller = new AbortController();
       let resolveDone;
       const done = new Promise(resolve => { resolveDone = resolve; });
-      const current = { controller, finish: () => resolveDone(true), cancel: () => resolveDone(false) };
+      const current = { startedAt: performance.now(), controller, finish: () => resolveDone(true), cancel: () => resolveDone(false) };
       active = current;
       const timer = setTimeout(() => { controller.abort(); current.cancel(); }, timeoutMs);
       let writer;
@@ -31,6 +34,7 @@ export function createBithumanOutput({ room, endpoint, fetchImpl = fetch, timeou
           const chunk = new Uint8Array(tail.length + value.length);
           chunk.set(tail); chunk.set(value, tail.length);
           const length = chunk.length - chunk.length % 2;
+          if (length && !bytes) onTiming({ stage: 'tts_first_pcm_ms', ms: performance.now() - current.startedAt });
           if (length) { await writer.write(chunk.subarray(0, length)); bytes += length; }
           tail = chunk.slice(length);
         }
