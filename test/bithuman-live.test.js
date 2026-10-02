@@ -119,3 +119,37 @@ test('verification distinguishes invalid URLs, network errors and authentication
   const auth = await (await handleBithumanLive(request('verify'), env)).json();
   assert.deepEqual(auth, { ok: false, error: 'livekit_ListRooms_http_401' });
 });
+
+test('audio prebuffer waits for 750ms of PCM and drains a short reply without padding', async () => {
+  const handlers = {}, chunks = [], timings = [];
+  let input;
+  const room = { registerRpcMethod: (name, handler) => { handlers[name] = handler; }, localParticipant: {
+    streamBytes: async () => ({
+      write: async bytes => chunks.push(bytes.slice()),
+      close: async () => { await handlers['lk.playback_finished']({ callerIdentity: 'bithuman-avatar-agent' }); },
+    }),
+  } };
+  const output = createBithumanOutput({ room, endpoint: 'https://tts.example', onTiming: event => timings.push(event),
+    fetchImpl: async () => new Response(new ReadableStream({ start(controller) { input = controller; } })),
+  });
+  const result = output.speak('buffered reply');
+  await new Promise(resolve => setImmediate(resolve));
+  input.enqueue(new Uint8Array(12000).fill(1));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(chunks.length, 0);
+  input.enqueue(new Uint8Array(12000).fill(2));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(chunks.length, 1);
+  assert.equal(chunks[0].length, 24000);
+  input.enqueue(Uint8Array.of(3, 4));
+  input.close();
+  assert.deepEqual(await result, { ok: true });
+  assert.equal(chunks[1].length, 2);
+  assert.equal(timings.find(x => x.stage === 'reply_audio_duration_ms').ms, 24002 / 32);
+  assert.ok(timings.some(x => x.stage === 'tts_receive_max_wait_ms'));
+  // EOF before the prebuffer threshold still sends exactly the short reply.
+  chunks.length = 0;
+  const short = createBithumanOutput({ room, endpoint: 'https://tts.example', fetchImpl: async () => new Response(Uint8Array.of(7, 8)) });
+  assert.deepEqual(await short.speak('short reply'), { ok: true });
+  assert.deepEqual(Array.from(chunks[0]), [7, 8]);
+});
