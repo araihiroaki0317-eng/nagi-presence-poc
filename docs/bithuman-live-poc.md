@@ -94,3 +94,21 @@ including backend persistence); tts_first_pcm_ms; avatar_playback_started_ms
 (provider notification, not proof of audible iPad playback). Existing Memory
 learning waits were identified in source but have not been moved or timed on a
 paid production turn. No extra billed trial is run by this change.
+
+
+## Measured trial after PR 30
+
+User screenshots: microphone ready 0.5–0.7s; Memory response 1.941–4.903s;
+TTS first PCM 0.811–2.731s on normal replies; avatar start notification
+1.306–3.239s after output.speak begins. Completed turns include playback duration.
+The transcript includes a complaint about inaudible sound. Provider playback
+notifications do not prove device audibility. Room deletion and provider end
+acknowledgement both returned true.
+
+Audio playback now uses a persistent audio element, requests LiveKit audio unlock
+in the original start gesture, records subscribed track identities and device
+play() outcomes, and retains the replay button on rejection. Both the avatar and
+its approved publish-on-behalf sender identity are accepted. This is a mitigation
+and better diagnosis; autoplay was not proven to be the reported failure cause.
+Standalone nonverbal transcript markers such as (咳払い) are discarded without
+an LLM request. This does not filter arbitrary noise recognized as normal words.

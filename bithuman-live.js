@@ -9,6 +9,7 @@ const $ = id => document.getElementById(id);
 const pendingKey = 'nagi.bithuman.pending-stop.v1';
 const attention = createLiveAttention();
 let muted = false, listenTask = null, sessionGeneration = 0;
+let audioBlocked = false;
 let micRequestedAt = 0;
 let viewer, sender, adapter, output, voiceInput, control = '', connected = false, busy = false, stopping = false, launching = false, cancelLaunch = false, timer, micTimer, micStarting = false, tokenPromise = null, tokenCreatedAt = 0;
 const status = text => { $('status').textContent = text; };
@@ -54,7 +55,7 @@ async function endSession(message = '終了しました。') {
     if (result) log('ルーム終了: ' + result.room_deleted + ' / bitHuman終了応答: ' + result.session_end_acknowledged);
     saveControl(''); status(message);
   } catch (error) { status('終了確認に失敗しました。「終了」で再試行してください。'); log(error.message); }
-  $('audio').replaceChildren(); $('avatar').srcObject = null;
+  $('avatarAudio').pause(); $('avatarAudio').srcObject = null; $('avatar').srcObject = null;
   stopping = false; busy = false; controls();
 }
 async function sendText(text) {
@@ -75,6 +76,9 @@ $('start').onclick = async () => {
   launching = true; cancelLaunch = false; sessionGeneration++; muted = false;
   const check = () => { if (cancelLaunch) throw new Error('接続を中止しました'); };
   busy = true; controls(); status('接続しています。');
+  viewer = new Room(); sender = new Room(); audioBlocked = false;
+  // Invoke while the start gesture is still active, before permission/network awaits.
+  const audioUnlock = viewer.startAudio().catch(() => { audioBlocked = true; $('play').hidden = false; });
   try {
     status('マイクの使用を許可してください。');
     const permissionStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
@@ -82,14 +86,19 @@ $('start').onclick = async () => {
     status('接続しています。');
     await call('verify'); check();
     const prep = await call('prepare', {}); saveControl(prep.control); controls(); check();
-    viewer = new Room(); sender = new Room();
+    await audioUnlock; check();
     output = createBithumanOutput({ room: sender, endpoint: W + '/tts', onTiming: timing });
     viewer.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
-      if (participant.identity !== 'bithuman-avatar-agent') return;
+      log('受信トラック: ' + participant.identity + ' / ' + track.kind);
+      if (!['bithuman-avatar-agent', 'nagi-audio-sender'].includes(participant.identity)) return;
       if (track.kind === Track.Kind.Video) track.attach($('avatar'));
-      else if (track.kind === Track.Kind.Audio) { const audio = track.attach(); $('audio').append(audio); audio.play().catch(() => { $('play').hidden = false; }); }
+      else if (track.kind === Track.Kind.Audio) {
+        const audio = $('avatarAudio'); track.attach(audio);
+        audio.muted = false; audio.volume = 1;
+        audio.play().then(() => { audioBlocked = false; $('play').hidden = viewer.canPlaybackAudio; log('端末音声: play()成功'); }).catch(error => { audioBlocked = true; $('play').hidden = false; log('端末音声: play()拒否 / ' + error.name); });
+      }
     });
-    viewer.on(RoomEvent.AudioPlaybackStatusChanged, () => { $('play').hidden = viewer.canPlaybackAudio; });
+    viewer.on(RoomEvent.AudioPlaybackStatusChanged, () => { $('play').hidden = viewer.canPlaybackAudio && !audioBlocked; });
     viewer.on(RoomEvent.Disconnected, () => { if (!stopping && control) void endSession('接続が切れたため終了しました。'); });
     sender.on(RoomEvent.Disconnected, () => { if (!stopping && control) void endSession('音声接続が切れたため終了しました。'); });
     await viewer.connect(prep.url, prep.viewer_token); check();
@@ -154,6 +163,7 @@ async function handleTranscript(event) {
     return;
   }
   const decision = attention.accept(event.text);
+  if (decision.action === 'non_speech') return;
   if (decision.action === 'ignore') { status('呼びかけ待ちです。「凪」と呼んでください。'); return; }
   if (decision.action === 'respond') { await sendText(decision.text); return; }
   busy = true; clearTimeout(micTimer); controls(); await voiceInput.stop();
@@ -190,7 +200,12 @@ $('mic').onclick = async () => {
 };
 $('composer').onsubmit = event => { event.preventDefault(); void sendText($('text').value); };
 $('stop').onclick = () => void endSession();
-$('play').onclick = async () => { await viewer?.startAudio(); for (const audio of $('audio').children) await audio.play(); $('play').hidden = true; };
+$('play').onclick = async () => {
+  try {
+    await Promise.all([viewer.startAudio(), $('avatarAudio').play()]);
+    audioBlocked = false; $('play').hidden = true; log('端末音声: 手動再生成功');
+  } catch (error) { audioBlocked = true; $('play').hidden = false; log('端末音声: 手動再生失敗 / ' + error.name); }
+};
 document.addEventListener('visibilitychange', () => { if (document.hidden && control) void endSession('画面を離れたため終了しました。'); });
 window.addEventListener('pagehide', () => { if (control) { navigator.sendBeacon(W + '/bithuman-live/stop', new Blob([JSON.stringify({ control })], { type: 'text/plain' })); void viewer?.disconnect(); void sender?.disconnect(); } });
 try {

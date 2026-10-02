@@ -15,3 +15,9 @@ test('idle drops ordinary speech, existing wake word acknowledges, conversation 
   gate.idle();
   assert.equal(gate.accept('おはよう').action, 'ignore');
 });
+
+test('nonverbal markers do not become conversational requests', () => {
+  const gate = createLiveAttention(); gate.engage();
+  for (const text of ['（咳払い）', '(咳払い)', '[laughter]', '(noise)']) assert.equal(gate.accept(text).action, 'non_speech');
+  assert.equal(gate.accept('咳が出るので相談したい').action, 'respond');
+});
