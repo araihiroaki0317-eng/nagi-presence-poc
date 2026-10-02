@@ -27,6 +27,7 @@ const pendingKey = 'nagi.bithuman.pending-stop.v1';
 const attention = createLiveAttention();
 let muted = false, listenTask = null, sessionGeneration = 0;
 let audioBlocked = false;
+let sourceAudioUrl = '';
 let micRequestedAt = 0;
 let viewer, sender, adapter, output, voiceInput, control = '', connected = false, busy = false, stopping = false, launching = false, cancelLaunch = false, timer, micTimer, micStarting = false, tokenPromise = null, tokenCreatedAt = 0;
 const status = text => { $('status').textContent = text; };
@@ -74,6 +75,7 @@ async function endSession(message = '終了しました。') {
   } catch (error) { status('終了確認に失敗しました。「終了」で再試行してください。'); log(error.message); }
   $('avatarAudio').pause(); $('avatarAudio').srcObject = null; $('avatar').srcObject = null;
   stopping = false; busy = false; controls();
+  if (sourceAudioUrl) { $('sourceAudio').src = sourceAudioUrl; $('sourcePreview').hidden = false; }
 }
 async function sendText(text) {
   if (!connected || busy || !text.trim()) return;
@@ -90,6 +92,9 @@ async function sendText(text) {
   if (connected) { attention.engage(); await listenAutomatically(); }
 }
 $('start').onclick = async () => {
+  $('sourceAudio').pause(); $('sourceAudio').removeAttribute('src'); $('sourcePreview').hidden = true;
+  if (sourceAudioUrl) URL.revokeObjectURL(sourceAudioUrl);
+  sourceAudioUrl = '';
   launching = true; cancelLaunch = false; sessionGeneration++; muted = false;
   const check = () => { if (cancelLaunch) throw new Error('接続を中止しました'); };
   busy = true; controls(); status('接続しています。');
@@ -163,7 +168,7 @@ $('start').onclick = async () => {
     status('凪が挨拶しています。');
     const greeting = 'おはよう、ひろくーん。今日は何企んでるの？';
     appendTranscript('凪: ' + greeting);
-    const greeted = await output.speak(greeting); check();
+    const greeted = await output.speak(greeting, { onSourceAudio: blob => { sourceAudioUrl = URL.createObjectURL(blob); } }); check();
     if (!greeted?.ok) throw new Error('greeting_playback_failed');
     connected = true; busy = false; attention.engage(); controls(); await listenAutomatically();
   } catch (error) { log(error.message); await endSession('接続できませんでした: ' + error.message); }
