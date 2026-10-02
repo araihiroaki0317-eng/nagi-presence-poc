@@ -3,7 +3,7 @@ import { Room, RoomEvent, Track } from 'https://esm.sh/livekit-client@2.22.3?bun
 import { Conversation, Scribe, RealtimeEvents, CommitStrategy } from 'https://esm.sh/@elevenlabs/client@latest?bundle';
 import { ElevenLabsConversationAdapter, CONVERSATION_PROFILES } from './runtime/conversation-adapter.js';
 import { RealtimeVoiceInput } from './runtime/voice-input.js';
-import { createBithumanOutput, createAudioAttachmentGate } from './runtime/bithuman-live-output.js';
+import { createBithumanOutput, createAudioAttachmentGate, captureRemoteGreeting } from './runtime/bithuman-live-output.js';
 const W = 'https://nagi-voice-transport.arai-hiroaki0317.workers.dev';
 const $ = id => document.getElementById(id);
 function appendTranscript(text) {
@@ -32,7 +32,8 @@ const audioEvent = name => { if (sessionStartedAt) log('audio_event +' + Math.ro
 for (const name of ['playing', 'waiting', 'stalled', 'pause', 'emptied']) {
   $('avatarAudio').addEventListener(name, () => audioEvent('device_' + name));
 }
-let sourceAudioUrl = '';
+let sourceAudioUrl = '', receivedAudioUrl = '', receivedCapture = null;
+let previewGeneration = 0;
 let micRequestedAt = 0;
 let viewer, sender, adapter, output, voiceInput, control = '', connected = false, busy = false, stopping = false, launching = false, cancelLaunch = false, timer, micTimer, micStarting = false, tokenPromise = null, tokenCreatedAt = 0;
 const status = text => { $('status').textContent = text; };
@@ -66,7 +67,7 @@ function saveControl(value) { control = value; if (value) localStorage.setItem(p
 async function endSession(message = '終了しました。') {
   if (launching) cancelLaunch = true;
   if (stopping) return;
-  audioAttachment?.close();
+  audioAttachment?.close(); receivedCapture?.stop();
   stopping = true; connected = false; sessionGeneration++; attention.idle(); micStarting = false; tokenPromise = null; clearTimeout(timer); clearTimeout(micTimer); controls();
   await voiceInput?.stop().catch(() => {});
   await adapter?.end().catch(() => {});
@@ -82,6 +83,7 @@ async function endSession(message = '終了しました。') {
   $('avatarAudio').pause(); $('avatarAudio').srcObject = null; $('avatar').srcObject = null;
   stopping = false; busy = false; controls();
   if (sourceAudioUrl) { $('sourceAudio').src = sourceAudioUrl; $('sourcePreview').hidden = false; }
+  if (receivedAudioUrl) { $('receivedAudio').src = receivedAudioUrl; $('receivedPreview').hidden = false; }
 }
 async function sendText(text) {
   if (!connected || busy || !text.trim()) return;
@@ -98,6 +100,11 @@ async function sendText(text) {
   if (connected) { attention.engage(); await listenAutomatically(); }
 }
 $('start').onclick = async () => {
+  previewGeneration++;
+  receivedCapture?.stop(); receivedCapture = null;
+  $('receivedAudio').pause(); $('receivedAudio').removeAttribute('src'); $('receivedPreview').hidden = true;
+  if (receivedAudioUrl) URL.revokeObjectURL(receivedAudioUrl);
+  receivedAudioUrl = '';
   $('sourceAudio').pause(); $('sourceAudio').removeAttribute('src'); $('sourcePreview').hidden = true;
   if (sourceAudioUrl) URL.revokeObjectURL(sourceAudioUrl);
   sourceAudioUrl = '';
@@ -108,6 +115,7 @@ $('start').onclick = async () => {
   sessionStartedAt = performance.now();
   audioAttachment = createAudioAttachmentGate();
   const sessionAudioAttachment = audioAttachment;
+  const captureGeneration = previewGeneration;
   // Invoke while the start gesture is still active, before permission/network awaits.
   const audioUnlock = viewer.startAudio().catch(() => { audioBlocked = true; $('play').hidden = false; });
   try {
@@ -126,6 +134,17 @@ $('start').onclick = async () => {
       else if (track.kind === Track.Kind.Audio) {
         const audio = $('avatarAudio'); track.attach(audio);
         audio.muted = false; audio.volume = 1;
+        if (!receivedCapture) receivedCapture = captureRemoteGreeting(track.mediaStreamTrack, {
+          onBlob: blob => {
+            if (captureGeneration !== previewGeneration) return;
+            receivedAudioUrl = URL.createObjectURL(blob);
+            log('受信音声の比較用記録: ' + blob.type);
+            if (!connected && !launching && !stopping) {
+              $('receivedAudio').src = receivedAudioUrl; $('receivedPreview').hidden = false;
+            }
+          },
+          onError: message => log(message),
+        });
         sessionAudioAttachment.attach(); audioEvent('track_attached');
         audio.play().then(() => { audioBlocked = false; $('play').hidden = viewer.canPlaybackAudio; log('端末音声: play()成功'); }).catch(error => { audioBlocked = true; $('play').hidden = false; log('端末音声: play()拒否 / ' + error.name); });
       }
@@ -183,6 +202,7 @@ $('start').onclick = async () => {
     const greeting = 'おはよう、ひろくーん。今日は何企んでるの？';
     appendTranscript('凪: ' + greeting);
     const greeted = await output.speak(greeting, { onSourceAudio: blob => { sourceAudioUrl = URL.createObjectURL(blob); } }); check();
+    receivedCapture?.stop();
     if (!greeted?.ok) throw new Error('greeting_playback_failed');
     connected = true; busy = false; attention.engage(); controls(); await listenAutomatically();
   } catch (error) { log(error.message); await endSession('接続できませんでした: ' + error.message); }
@@ -236,6 +256,19 @@ $('mic').onclick = async () => {
 };
 $('composer').onsubmit = event => { event.preventDefault(); void sendText($('text').value); };
 $('stop').onclick = () => void endSession();
+$('copyDebug').onclick = async () => {
+  try {
+    await navigator.clipboard.writeText($('debug').textContent);
+    $('copyDebug').textContent = 'コピーしました';
+  } catch {
+    const range = document.createRange(); range.selectNodeContents($('debug'));
+    const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+    $('copyDebug').textContent = '選択したログをコピーしてください';
+  }
+};
+for (const [id, other] of [['sourceAudio', 'receivedAudio'], ['receivedAudio', 'sourceAudio']]) {
+  $(id).addEventListener('play', () => $(other).pause());
+}
 $('play').onclick = async () => {
   try {
     await Promise.all([viewer.startAudio(), $('avatarAudio').play()]);

@@ -134,3 +134,34 @@ export function createAudioAttachmentGate() {
     },
   };
 }
+
+/** Diagnostic capture of the received avatar track only; never requests a microphone. */
+export function captureRemoteGreeting(track, { onBlob, onError = () => {}, maxMs = 20000,
+  Recorder = globalThis.MediaRecorder, Stream = globalThis.MediaStream } = {}) {
+  if (!Recorder || !Stream) { onError('received_capture_unsupported'); return { stop() {} }; }
+  let recorder, timer, stopped = false;
+  const chunks = [];
+  const stop = () => {
+    clearTimeout(timer);
+    if (stopped) return;
+    stopped = true;
+    try { if (recorder?.state !== 'inactive') recorder?.stop(); } catch { onError('received_capture_stop_failed'); }
+  };
+  try {
+    // A stream wrapper does not take ownership of the live track. Never stop its tracks.
+    recorder = new Recorder(new Stream([track]));
+    recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
+    recorder.onerror = () => { onError('received_capture_failed'); stop(); };
+    recorder.onstop = () => {
+      clearTimeout(timer);
+      if (chunks.length) {
+        const blob = new Blob(chunks, { type: recorder.mimeType || chunks[0].type });
+        chunks.length = 0;
+        try { onBlob(blob); } catch { onError('received_capture_preview_failed'); }
+      }
+    };
+    recorder.start();
+    timer = setTimeout(stop, maxMs);
+  } catch { onError('received_capture_unsupported'); stop(); }
+  return { stop };
+}
