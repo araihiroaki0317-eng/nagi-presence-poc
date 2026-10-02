@@ -1,3 +1,13 @@
+// Preserve the existing Agent's voice tuning without inventing new values.
+export function agentVoiceSettings(agent) {
+  const tts = agent?.conversation_config?.tts || {};
+  const settings = {};
+  for (const key of ['stability', 'similarity_boost', 'speed']) {
+    if (typeof tts[key] === 'number' && Number.isFinite(tts[key])) settings[key] = tts[key];
+  }
+  return Object.keys(settings).length ? { voice_settings: settings } : {};
+}
+
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import { createSpeechEngineTransport } from '../runtime/speech-engine-transport.js';
 import { verifySpeechEngineJwt } from '../runtime/speech-engine-auth.js';
@@ -191,7 +201,7 @@ export default {
       const speech = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + encodeURIComponent(voiceId) + '?output_format=pcm_16000', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'xi-api-key': env.ELEVENLABS_API_KEY },
-        body: JSON.stringify({ text: 'こんにちは。凪の声で、リップシンクの動作を確認しています。', model_id: agent?.conversation_config?.tts?.model_id || 'eleven_multilingual_v2' }),
+        body: JSON.stringify({ text: 'こんにちは。凪の声で、リップシンクの動作を確認しています。', model_id: agent?.conversation_config?.tts?.model_id || 'eleven_multilingual_v2', ...agentVoiceSettings(agent) }),
       });
       if (!speech.ok) return new Response('Unavailable', { status: 502 });
       let wav;
@@ -284,7 +294,7 @@ export default {
       const speech = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=${encodeURIComponent(input?.output_format === 'pcm_16000' ? 'pcm_16000' : input?.output_format === 'pcm_24000' ? 'pcm_24000' : 'mp3_44100_128')}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'xi-api-key': env.ELEVENLABS_API_KEY },
-        body: JSON.stringify({ text, model_id: agent?.conversation_config?.tts?.model_id || 'eleven_multilingual_v2' }),
+        body: JSON.stringify({ text, model_id: agent?.conversation_config?.tts?.model_id || 'eleven_multilingual_v2', ...agentVoiceSettings(agent) }),
       });
       if (!speech.ok) return Response.json({ ok: false, error: 'tts_failed', status: speech.status }, { status: 502 });
       return new Response(speech.body, { status: 200, headers: { 'Content-Type': speech.headers.get('Content-Type') || 'audio/mpeg', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': allowedOrigin, 'Vary': 'Origin' } });
