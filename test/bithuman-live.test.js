@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { handleBithumanLive } from '../runtime/bithuman-live-server.js';
-import { createBithumanOutput, createAudioAttachmentGate } from '../runtime/bithuman-live-output.js';
+import { createBithumanOutput, createAudioAttachmentGate, captureRemoteGreeting } from '../runtime/bithuman-live-output.js';
 const origin = 'https://araihiroaki0317-eng.github.io';
 const env = { LIVEKIT_URL: 'wss://example.livekit.cloud', LIVEKIT_API_KEY: 'test-key', LIVEKIT_API_SECRET: 'test-secret', BITHUMAN_API_SECRET: 'test-bithuman', ELEVENLABS_API_KEY: 'test-eleven' };
 const request = (action, body, site = origin) => new Request('https://worker.example/bithuman-live/' + action, { method: body === undefined ? 'GET' : 'POST', headers: { Origin: site, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
@@ -192,4 +192,38 @@ test('attachment wait cancels, times out, and rejects after session close', asyn
   await assert.rejects(ending, /audio_session_ended/);
   gate.attach();
   await assert.rejects(gate.wait(), /audio_session_ended/);
+});
+
+test('received greeting capture uses only the supplied track and never stops it', async () => {
+  const track = { stop() { assert.fail('must not stop playback track'); } };
+  let blob, stopCalls = 0;
+  class Stream { constructor(tracks) { assert.deepEqual(tracks, [track]); } }
+  class Recorder {
+    constructor() { this.state = 'inactive'; this.mimeType = 'audio/mp4'; }
+    start() { this.state = 'recording'; }
+    stop() {
+      stopCalls++; this.state = 'inactive';
+      this.ondataavailable({ data: new Blob([Uint8Array.of(1, 2)]) });
+      this.onstop();
+    }
+  }
+  const capture = captureRemoteGreeting(track, { Recorder, Stream, onBlob: b => { blob = b; } });
+  capture.stop(); capture.stop();
+  assert.equal(stopCalls, 1);
+  assert.equal(blob.type, 'audio/mp4');
+  assert.deepEqual(Array.from(new Uint8Array(await blob.arrayBuffer())), [1, 2]);
+});
+
+test('received greeting diagnostics fail gracefully and stop at the time limit', async () => {
+  let error, stopped = false;
+  captureRemoteGreeting({}, { Recorder: null, Stream: null, onError: value => { error = value; } }).stop();
+  assert.equal(error, 'received_capture_unsupported');
+  class Recorder {
+    state = 'inactive';
+    start() { this.state = 'recording'; }
+    stop() { this.state = 'inactive'; stopped = true; this.onstop(); }
+  }
+  captureRemoteGreeting({}, { Recorder, Stream: class {}, maxMs: 5, onBlob() {} });
+  await new Promise(resolve => setTimeout(resolve, 15));
+  assert.equal(stopped, true);
 });
