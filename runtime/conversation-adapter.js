@@ -129,6 +129,7 @@ export class ElevenLabsConversationAdapter {
   async sendMemoryText(value) {
     const callbacks = this.callbacks || {};
     const session = this.session;
+    const responseStartedAt = performance.now();
     callbacks.onStatusChange?.({ status: 'processing', backend: 'memory' });
     try {
       const response = await this.fetchImpl(`${this.memoryConfig.endpoint}/respond`, {
@@ -152,6 +153,7 @@ export class ElevenLabsConversationAdapter {
         error.payload = payload;
         throw error;
       }
+      callbacks.onTiming?.({ stage: 'memory_response_ms', ms: performance.now() - responseStartedAt });
       const reply = String(payload?.response || '').trim();
       if (!reply) throw new Error('memory_response_missing');
       if (this.session !== session) return;

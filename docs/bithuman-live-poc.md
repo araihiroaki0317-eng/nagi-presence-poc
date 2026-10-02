@@ -72,3 +72,25 @@ iPad acceptance; mocked tests do not establish live compatibility.
 - https://docs.livekit.io/frontends/build/authentication/
 - https://github.com/livekit/node-sdks/blob/main/packages/livekit-server-sdk/src/AccessToken.ts
 - https://github.com/livekit/client-sdk-js/blob/main/src/room/participant/LocalParticipant.ts
+
+
+## Continuous conversation follow-up
+
+The start gesture requests microphone permission before creating a room. After
+Nagi's greeting, speech recognition starts automatically and resumes after each
+reply. The microphone control is now mute/resume. During playback the input
+connection closes to prevent self-transcription; reconnect latency remains and
+is measured, rather than described as eliminated. Barge-in is not supported.
+
+The existing attention.js exact wake vocabulary is reused. Twelve seconds without
+speech switches to wake-only idle. Idle transcripts other than a standalone wake
+call are dropped before the Memory request. Idle still uses remote STT and its
+usage allowance; this is not local wake-word detection or speaker identification.
+Conversation mode can still accept unrelated nearby speech. The 90-second test
+limit and page-leave cleanup remain.
+
+Debug timings: microphone readiness; memory_response_ms (the whole /respond call,
+including backend persistence); tts_first_pcm_ms; avatar_playback_started_ms
+(provider notification, not proof of audible iPad playback). Existing Memory
+learning waits were identified in source but have not been moved or timed on a
+paid production turn. No extra billed trial is run by this change.
