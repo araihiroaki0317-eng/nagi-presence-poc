@@ -87,6 +87,7 @@ test('stop still deletes the room when the provider end request loses its connec
 
 test('audio delivery preserves split PCM samples and waits for avatar playback', async () => {
   const handlers = {}, chunks = [];
+  let source;
   let closed = false;
   const room = { registerRpcMethod: (name, handler) => { handlers[name] = handler; }, localParticipant: { streamBytes: async options => {
     assert.equal(options.topic, 'lk.audio_stream');
@@ -98,8 +99,12 @@ test('audio delivery preserves split PCM samples and waits for avatar playback',
     assert.equal(JSON.parse(options.body).output_format, 'pcm_16000');
     return new Response(new ReadableStream({ start(controller) { controller.enqueue(Uint8Array.of(1)); controller.enqueue(Uint8Array.of(2, 3, 4)); controller.close(); } }));
   } });
-  assert.deepEqual(await output.speak('こんにちは'), { ok: true });
+  assert.deepEqual(await output.speak('こんにちは', { onSourceAudio: blob => { source = blob; } }), { ok: true });
   assert.deepEqual(chunks, [1, 2, 3, 4]); assert.equal(closed, true);
+  const wav = new Uint8Array(await source.arrayBuffer());
+  assert.equal(new TextDecoder().decode(wav.slice(0, 4)), 'RIFF');
+  assert.equal(new DataView(wav.buffer).getUint32(40, true), 4);
+  assert.deepEqual(Array.from(wav.slice(44)), chunks);
 });
 
 test('missing playback confirmation is an error, not success', async () => {

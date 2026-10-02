@@ -10,7 +10,7 @@ export function createBithumanOutput({ room, endpoint, fetchImpl = fetch, timeou
     return '';
   });
   return {
-    async speak(text) {
+    async speak(text, { onSourceAudio } = {}) {
       if (active) return { ok: false, error: 'speech_in_progress' };
       const controller = new AbortController();
       let resolveDone;
@@ -19,6 +19,9 @@ export function createBithumanOutput({ room, endpoint, fetchImpl = fetch, timeou
       active = current;
       const timer = setTimeout(() => { controller.abort(); current.cancel(); }, timeoutMs);
       let writer, reader;
+      const sourceChunks = [];
+      let sourceBytes = 0;
+      const sourceLimit = 16000 * 2 * 15; // Diagnostic preview: first 15 seconds only.
       try {
         const response = await fetchImpl(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, output_format: 'pcm_16000' }), signal: controller.signal });
         if (!response.ok || !response.body) throw new Error('tts_http_' + response.status);
@@ -57,6 +60,10 @@ export function createBithumanOutput({ room, endpoint, fetchImpl = fetch, timeou
           if (length && !bytes) onTiming({ stage: 'tts_first_pcm_ms', ms: performance.now() - current.startedAt });
           if (length) {
             bytes += length;
+            if (onSourceAudio && sourceBytes < sourceLimit) {
+              const copy = chunk.slice(0, Math.min(length, sourceLimit - sourceBytes));
+              sourceChunks.push(copy); sourceBytes += copy.length;
+            }
             const samples = chunk.subarray(0, length);
             if (!sent) {
               buffered.push(samples); pendingBytes += length;
@@ -73,6 +80,9 @@ export function createBithumanOutput({ room, endpoint, fetchImpl = fetch, timeou
         await writer.close();
         writer = null;
         if (!await done) throw new Error('playback_not_confirmed');
+        if (onSourceAudio) {
+          try { onSourceAudio(pcmWav(sourceChunks, sourceBytes)); } catch { /* Diagnostics must not interrupt conversation. */ }
+        }
         return { ok: true };
       } catch (error) {
         controller.abort();
@@ -86,4 +96,15 @@ export function createBithumanOutput({ room, endpoint, fetchImpl = fetch, timeou
       try { await room.localParticipant.performRpc({ destinationIdentity: AVATAR, method: 'lk.clear_buffer', payload: '', responseTimeout: 3000 }); } catch {}
     },
   };
+}
+
+export function pcmWav(chunks, byteLength) {
+  const header = new ArrayBuffer(44), view = new DataView(header);
+  const text = (offset, value) => { for (let i = 0; i < value.length; i++) view.setUint8(offset + i, value.charCodeAt(i)); };
+  text(0, 'RIFF'); view.setUint32(4, 36 + byteLength, true); text(8, 'WAVE');
+  text(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true); view.setUint32(24, 16000, true); view.setUint32(28, 32000, true);
+  view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  text(36, 'data'); view.setUint32(40, byteLength, true);
+  return new Blob([header, ...chunks], { type: 'audio/wav' });
 }

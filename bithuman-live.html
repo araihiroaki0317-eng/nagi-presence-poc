@@ -42,6 +42,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
 <details id="help"><summary>使い方・接続情報（90秒テスト）</summary><div>
 <p>凪の姿・記憶・声で会話します。開始後は利用枠を消費します。画面を開いている間は90秒で自動終了します。</p>
 <p>挨拶の後はそのまま話せます。12秒間発話がなければ「凪」と単独で呼びかけて再開します。呼びかけ待ち中も音声認識は動作します。周囲の人の声との識別や、返答中の割り込みには未対応です。</p>
+<div id="sourcePreview" hidden><p>挨拶の元音声（アバターへ送った音声・最大15秒）。会話終了後に比較できます。ページを閉じると消えます。</p><audio id="sourceAudio" controls preload="none" style="width:100%"></audio></div>
 <details><summary>接続情報</summary><pre id="debug"></pre></details></div></details>
 <div id="transcript" role="log" aria-label="凪との会話" aria-live="polite" aria-relevant="additions" tabindex="0"></div>
 <button id="latest" hidden>最新の会話へ ↓</button>
