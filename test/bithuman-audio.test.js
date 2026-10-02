@@ -7,7 +7,7 @@ import { readFile } from 'node:fs/promises';
 let source = await readFile(new URL('../worker/nagi-voice-transport.js', import.meta.url), 'utf8');
 source = source.replace("import { WorkerEntrypoint } from 'cloudflare:workers';", 'class WorkerEntrypoint {}');
 source = source.replaceAll("'../runtime/", "'" + new URL('../runtime/', import.meta.url).href);
-const { default: worker, pcm16ToWav } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+const { default: worker, pcm16ToWav, agentVoiceSettings } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
 
 test('WAV exposes exact duration and preserves every PCM sample', () => {
   const pcm = new Uint8Array(32000);
@@ -67,4 +67,22 @@ test('signed audio is fetched as PCM and served as WAV; failures remain visible'
   tampered.searchParams.set('exp', String(Date.now() - 1));
   assert.equal((await worker.fetch(new Request(tampered), env)).status, 403);
   assert.equal(speechCalls, 1);
+});
+
+ test('Agent voice tuning preserves zero and omits absent or nonnumeric fields', () => {
+  assert.deepEqual(agentVoiceSettings({ conversation_config: { tts: { stability: 0, similarity_boost: 0.8, speed: 0.9, secret: 'not-forwarded' } } }), { voice_settings: { stability: 0, similarity_boost: 0.8, speed: 0.9 } });
+  assert.deepEqual(agentVoiceSettings({ conversation_config: { tts: { stability: null, speed: '1', similarity_boost: NaN } } }), {});
+  assert.deepEqual(agentVoiceSettings({}), {});
+});
+
+test('live TTS forwards stored Agent tuning to ElevenLabs', async t => {
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    if (url.includes('/convai/agents/')) return Response.json({ conversation_config: { tts: { voice_id: 'voice-test', model_id: 'eleven_multilingual_v2', stability: 0, speed: 0.9, similarity_boost: 0.8 } } });
+    assert.ok(url.includes('/text-to-speech/voice-test?output_format=pcm_16000'));
+    assert.deepEqual(JSON.parse(options.body), { text: 'こんにちは', model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0, similarity_boost: 0.8, speed: 0.9 } });
+    return new Response(new Uint8Array(320));
+  });
+  const response = await worker.fetch(new Request('https://worker.example/tts', { method: 'POST', headers: { Origin: 'https://araihiroaki0317-eng.github.io', 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'こんにちは', output_format: 'pcm_16000' }) }), { ELEVENLABS_API_KEY: 'test-only' });
+  assert.equal(response.status, 200);
+  assert.equal((await response.arrayBuffer()).byteLength, 320);
 });
