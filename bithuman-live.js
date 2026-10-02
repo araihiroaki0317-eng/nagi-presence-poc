@@ -3,7 +3,7 @@ import { Room, RoomEvent, Track } from 'https://esm.sh/livekit-client@2.22.3?bun
 import { Conversation, Scribe, RealtimeEvents, CommitStrategy } from 'https://esm.sh/@elevenlabs/client@latest?bundle';
 import { ElevenLabsConversationAdapter, CONVERSATION_PROFILES } from './runtime/conversation-adapter.js';
 import { RealtimeVoiceInput } from './runtime/voice-input.js';
-import { createBithumanOutput } from './runtime/bithuman-live-output.js';
+import { createBithumanOutput, createAudioAttachmentGate } from './runtime/bithuman-live-output.js';
 const W = 'https://nagi-voice-transport.arai-hiroaki0317.workers.dev';
 const $ = id => document.getElementById(id);
 function appendTranscript(text) {
@@ -27,6 +27,11 @@ const pendingKey = 'nagi.bithuman.pending-stop.v1';
 const attention = createLiveAttention();
 let muted = false, listenTask = null, sessionGeneration = 0;
 let audioBlocked = false;
+let audioAttachment, sessionStartedAt = 0;
+const audioEvent = name => { if (sessionStartedAt) log('audio_event +' + Math.round(performance.now() - sessionStartedAt) + ' ms: ' + name); };
+for (const name of ['playing', 'waiting', 'stalled', 'pause', 'emptied']) {
+  $('avatarAudio').addEventListener(name, () => audioEvent('device_' + name));
+}
 let sourceAudioUrl = '';
 let micRequestedAt = 0;
 let viewer, sender, adapter, output, voiceInput, control = '', connected = false, busy = false, stopping = false, launching = false, cancelLaunch = false, timer, micTimer, micStarting = false, tokenPromise = null, tokenCreatedAt = 0;
@@ -61,6 +66,7 @@ function saveControl(value) { control = value; if (value) localStorage.setItem(p
 async function endSession(message = '終了しました。') {
   if (launching) cancelLaunch = true;
   if (stopping) return;
+  audioAttachment?.close();
   stopping = true; connected = false; sessionGeneration++; attention.idle(); micStarting = false; tokenPromise = null; clearTimeout(timer); clearTimeout(micTimer); controls();
   await voiceInput?.stop().catch(() => {});
   await adapter?.end().catch(() => {});
@@ -99,6 +105,9 @@ $('start').onclick = async () => {
   const check = () => { if (cancelLaunch) throw new Error('接続を中止しました'); };
   busy = true; controls(); status('接続しています。');
   viewer = new Room(); sender = new Room(); audioBlocked = false;
+  sessionStartedAt = performance.now();
+  audioAttachment = createAudioAttachmentGate();
+  const sessionAudioAttachment = audioAttachment;
   // Invoke while the start gesture is still active, before permission/network awaits.
   const audioUnlock = viewer.startAudio().catch(() => { audioBlocked = true; $('play').hidden = false; });
   try {
@@ -109,7 +118,7 @@ $('start').onclick = async () => {
     await call('verify'); check();
     const prep = await call('prepare', {}); saveControl(prep.control); controls(); check();
     await audioUnlock; check();
-    output = createBithumanOutput({ room: sender, endpoint: W + '/tts', onTiming: timing });
+    output = createBithumanOutput({ room: sender, endpoint: W + '/tts', onTiming: timing, beforeSend: signal => sessionAudioAttachment.wait(signal) });
     viewer.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
       log('受信トラック: ' + participant.identity + ' / ' + track.kind);
       if (!['bithuman-avatar-agent', 'nagi-audio-sender'].includes(participant.identity)) return;
@@ -117,6 +126,7 @@ $('start').onclick = async () => {
       else if (track.kind === Track.Kind.Audio) {
         const audio = $('avatarAudio'); track.attach(audio);
         audio.muted = false; audio.volume = 1;
+        sessionAudioAttachment.attach(); audioEvent('track_attached');
         audio.play().then(() => { audioBlocked = false; $('play').hidden = viewer.canPlaybackAudio; log('端末音声: play()成功'); }).catch(error => { audioBlocked = true; $('play').hidden = false; log('端末音声: play()拒否 / ' + error.name); });
       }
     });
@@ -163,7 +173,11 @@ $('start').onclick = async () => {
       connection.on(RealtimeEvents.PARTIAL_TRANSCRIPT, data => { if (!closed) onPartial(data.text); });
       connection.on(RealtimeEvents.COMMITTED_TRANSCRIPT, data => { if (!closed) onFinal(data.text); });
       connection.on(RealtimeEvents.ERROR, error => { if (!closed) onError(error); });
-      return { close: () => { closed = true; connection.close(); } };
+      return { close: async () => {
+        closed = true; audioEvent('mic_close_requested');
+        await connection.close();
+        audioEvent('mic_close_returned');
+      } };
     } });
     status('凪が挨拶しています。');
     const greeting = 'おはよう、ひろくーん。今日は何企んでるの？';

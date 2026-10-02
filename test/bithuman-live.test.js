@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { handleBithumanLive } from '../runtime/bithuman-live-server.js';
-import { createBithumanOutput } from '../runtime/bithuman-live-output.js';
+import { createBithumanOutput, createAudioAttachmentGate } from '../runtime/bithuman-live-output.js';
 const origin = 'https://araihiroaki0317-eng.github.io';
 const env = { LIVEKIT_URL: 'wss://example.livekit.cloud', LIVEKIT_API_KEY: 'test-key', LIVEKIT_API_SECRET: 'test-secret', BITHUMAN_API_SECRET: 'test-bithuman', ELEVENLABS_API_KEY: 'test-eleven' };
 const request = (action, body, site = origin) => new Request('https://worker.example/bithuman-live/' + action, { method: body === undefined ? 'GET' : 'POST', headers: { Origin: site, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
@@ -157,4 +157,39 @@ test('audio prebuffer waits for 750ms of PCM and drains a short reply without pa
   const short = createBithumanOutput({ room, endpoint: 'https://tts.example', fetchImpl: async () => new Response(Uint8Array.of(7, 8)) });
   assert.deepEqual(await short.speak('short reply'), { ok: true });
   assert.deepEqual(Array.from(chunks[0]), [7, 8]);
+});
+
+test('audio waits for attachment without duplicating samples or adding a fixed delay', async () => {
+  const gate = createAudioAttachmentGate(), handlers = {};
+  let streams = 0;
+  const chunks = [];
+  const room = { registerRpcMethod: (name, fn) => { handlers[name] = fn; }, localParticipant: {
+    streamBytes: async () => {
+      streams++;
+      return { write: async bytes => chunks.push(...bytes), close: async () => handlers['lk.playback_finished']({ callerIdentity: 'bithuman-avatar-agent' }) };
+    },
+  } };
+  const output = createBithumanOutput({ room, endpoint: 'test', beforeSend: signal => gate.wait(signal),
+    fetchImpl: async () => new Response(Uint8Array.of(1, 2, 3, 4)) });
+  const speaking = output.speak('greeting');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(streams, 0);
+  gate.attach();
+  assert.deepEqual(await speaking, { ok: true });
+  assert.deepEqual(chunks, [1, 2, 3, 4]);
+  assert.deepEqual(await output.speak('next turn'), { ok: true });
+  assert.equal(streams, 2);
+});
+
+test('attachment wait cancels, times out, and rejects after session close', async () => {
+  const gate = createAudioAttachmentGate(), controller = new AbortController();
+  const pending = gate.wait(controller.signal);
+  controller.abort();
+  await assert.rejects(pending, /audio_session_ended/);
+  await assert.rejects(gate.wait(undefined, 5), /audio_track_timeout/);
+  const ending = gate.wait();
+  gate.close();
+  await assert.rejects(ending, /audio_session_ended/);
+  gate.attach();
+  await assert.rejects(gate.wait(), /audio_session_ended/);
 });

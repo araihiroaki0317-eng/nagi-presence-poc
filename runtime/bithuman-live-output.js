@@ -1,5 +1,5 @@
 const AVATAR = 'bithuman-avatar-agent';
-export function createBithumanOutput({ room, endpoint, fetchImpl = fetch, timeoutMs = 60000, prebufferMs = 750, onTiming = () => {} }) {
+export function createBithumanOutput({ room, endpoint, fetchImpl = fetch, timeoutMs = 60000, prebufferMs = 750, onTiming = () => {}, beforeSend = async () => {} }) {
   let active = null;
   room.registerRpcMethod('lk.playback_started', async ({ callerIdentity }) => {
     if (callerIdentity === AVATAR && active) onTiming({ stage: 'avatar_playback_started_ms', ms: performance.now() - active.startedAt });
@@ -25,6 +25,9 @@ export function createBithumanOutput({ room, endpoint, fetchImpl = fetch, timeou
       try {
         const response = await fetchImpl(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, output_format: 'pcm_16000' }), signal: controller.signal });
         if (!response.ok || !response.body) throw new Error('tts_http_' + response.status);
+        await beforeSend(controller.signal);
+        if (controller.signal.aborted) throw new Error('speech_cancelled');
+        onTiming({ stage: 'audio_track_ready_ms', ms: performance.now() - current.startedAt });
         writer = await room.localParticipant.streamBytes({ name: 'nagi-reply-' + Date.now(), topic: 'lk.audio_stream', destinationIdentities: [AVATAR], attributes: { sample_rate: '16000', num_channels: '1' } });
         reader = response.body.getReader();
         // Network chunks can split a 16-bit sample. Forward only complete samples.
@@ -107,4 +110,27 @@ export function pcmWav(chunks, byteLength) {
   view.setUint16(32, 2, true); view.setUint16(34, 16, true);
   text(36, 'data'); view.setUint32(40, byteLength, true);
   return new Blob([header, ...chunks], { type: 'audio/wav' });
+}
+
+/** Attachment readiness only; does not claim that the physical speaker is ready. */
+export function createAudioAttachmentGate() {
+  let attached = false, closed = false;
+  const waiters = new Set();
+  return {
+    attach() { if (closed) return; attached = true; for (const settle of [...waiters]) settle(); },
+    close() { closed = true; for (const settle of [...waiters]) settle(new Error('audio_session_ended')); },
+    wait(signal, timeoutMs = 15000) {
+      if (closed || signal?.aborted) return Promise.reject(new Error('audio_session_ended'));
+      if (attached) return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        const settle = error => {
+          clearTimeout(timer); signal?.removeEventListener('abort', abort); waiters.delete(settle);
+          error ? reject(error) : resolve();
+        };
+        const abort = () => settle(new Error('audio_session_ended'));
+        const timer = setTimeout(() => settle(new Error('audio_track_timeout')), timeoutMs);
+        waiters.add(settle); signal?.addEventListener('abort', abort, { once: true });
+      });
+    },
+  };
 }
