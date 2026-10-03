@@ -43,6 +43,7 @@ test('session uses separate viewer/sender grants and scoped stop capability', as
     return Response.json({ ended: true });
   });
   const prep = await (await handleBithumanLive(request('prepare', {}), env)).json();
+  assert.equal(prep.max_session_seconds, 300);
   const viewer = jwtClaims(prep.viewer_token), sender = jwtClaims(prep.sender_token);
   assert.equal(viewer.video.room, sender.video.room);
   assert.equal(viewer.kind, undefined); assert.equal(sender.kind, 'agent');
@@ -256,3 +257,4 @@ test('received greeting diagnostics fail gracefully and stop at the time limit',
   await new Promise(resolve => setTimeout(resolve, 15));
   assert.equal(stopped, true);
 });
+
