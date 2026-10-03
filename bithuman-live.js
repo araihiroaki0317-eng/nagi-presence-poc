@@ -1,3 +1,4 @@
+import { createSessionLimit } from './runtime/session-limit.js';
 import { monitorAvatarAudio } from './runtime/avatar-audio-stats.js';
 import { createLiveAttention } from './runtime/live-attention.js';
 import { Room, RoomEvent, Track } from 'https://esm.sh/livekit-client@2.22.3?bundle';
@@ -27,7 +28,7 @@ $('latest').onclick = () => {
 const pendingKey = 'nagi.bithuman.pending-stop.v1';
 const attention = createLiveAttention();
 let muted = false, listenTask = null, sessionGeneration = 0;
-let audioBlocked = false, audioMonitor = null;
+let audioBlocked = false, audioMonitor = null, sessionLimit = null;
 const startupSilenceMs = new URLSearchParams(location.search).get('onset') === '0' ? 0 : 160;
 const captureReceived = new URLSearchParams(location.search).get('capture') === '1';
 let audioAttachment, sessionStartedAt = 0;
@@ -46,7 +47,7 @@ function controls() {
   $('start').disabled = connected || busy || stopping || launching || Boolean(control);
   $('stop').disabled = !control || stopping;
   $('mic').textContent = muted ? 'マイクを再開' : 'マイクをミュート';
-  for (const id of ['mic', 'text', 'send']) $(id).disabled = !connected || busy || stopping || micStarting;
+  for (const id of ['mic', 'text', 'send']) $(id).disabled = !connected || busy || stopping || micStarting || sessionLimit?.expired;
 }
 function prefetchScribeToken() {
   if (!tokenPromise || Date.now() - tokenCreatedAt > 50000) {
@@ -61,8 +62,10 @@ function prefetchScribeToken() {
   return tokenPromise;
 }
 async function call(action, body) {
+  const startedAt = performance.now();
   const response = await fetch(W + '/bithuman-live/' + action, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), keepalive: action === 'stop' });
   const data = await response.json();
+  timing({ stage: 'startup_' + action + '_ms', ms: performance.now() - startedAt });
   if (!response.ok || !data.ok) throw new Error(data.error || ('設定が必要: ' + (data.missing || []).join(', ')));
   return data;
 }
@@ -71,6 +74,7 @@ async function endSession(message = '終了しました。') {
   if (launching) cancelLaunch = true;
   if (stopping) return;
   audioAttachment?.close(); receivedCapture?.stop(); audioMonitor?.stop();
+  sessionLimit?.close(); sessionLimit = null; $('remaining').textContent = '';
   stopping = true; connected = false; sessionGeneration++; attention.idle(); micStarting = false; tokenPromise = null; clearTimeout(timer); clearTimeout(micTimer); controls();
   await voiceInput?.stop().catch(() => {});
   await adapter?.end().catch(() => {});
@@ -80,6 +84,7 @@ async function endSession(message = '終了しました。') {
   try {
     if (cleanupResult.status === 'rejected') throw cleanupResult.reason;
     const result = cleanupResult.value;
+    if (result && !result.session_end_acknowledged) throw new Error('bithuman_end_not_acknowledged');
     if (result) log('ルーム終了: ' + result.room_deleted + ' / bitHuman終了応答: ' + result.session_end_acknowledged);
     saveControl(''); status(message);
   } catch (error) { status('終了確認に失敗しました。「終了」で再試行してください。'); log(error.message); }
@@ -89,7 +94,7 @@ async function endSession(message = '終了しました。') {
   if (receivedAudioUrl) { $('receivedAudio').src = receivedAudioUrl; $('receivedPreview').hidden = false; }
 }
 async function sendText(text) {
-  if (!connected || busy || !text.trim()) return;
+  if (!connected || busy || sessionLimit?.expired || !text.trim()) return;
   busy = true; clearTimeout(micTimer); controls();
   await voiceInput?.stop();
   $('text').value = '';
@@ -99,7 +104,7 @@ async function sendText(text) {
   const replyStartedAt = performance.now();
   await adapter.sendText(text.trim());
   log('応答完了まで: ' + ((performance.now() - replyStartedAt) / 1000).toFixed(1) + '秒（再生時間を含む）');
-  busy = false; controls();
+  busy = false; controls(); sessionLimit?.finishTurn();
   if (connected) { attention.engage(); await listenAutomatically(); }
 }
 $('start').onclick = async () => {
@@ -113,6 +118,7 @@ $('start').onclick = async () => {
   $('sourceAudio').pause(); $('sourceAudio').removeAttribute('src'); $('sourcePreview').hidden = true;
   if (sourceAudioUrl) URL.revokeObjectURL(sourceAudioUrl);
   sourceAudioUrl = '';
+  sessionLimit?.close(); sessionLimit = null;
   launching = true; cancelLaunch = false; sessionGeneration++; muted = false;
   const check = () => { if (cancelLaunch) throw new Error('接続を中止しました'); };
   busy = true; controls(); status('接続しています。');
@@ -125,7 +131,9 @@ $('start').onclick = async () => {
   const audioUnlock = viewer.startAudio().catch(() => { audioBlocked = true; $('play').hidden = false; });
   try {
     status('マイクの使用を許可してください。');
+    const permissionStartedAt = performance.now();
     const permissionStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    timing({ stage: 'startup_permission_ms', ms: performance.now() - permissionStartedAt });
     permissionStream.getTracks().forEach(track => track.stop()); check();
     status('接続しています。');
     await call('verify'); check();
@@ -163,11 +171,15 @@ $('start').onclick = async () => {
     await viewer.connect(prep.url, prep.viewer_token); check();
     await sender.connect(prep.url, prep.sender_token); check();
     await viewer.startAudio().catch(() => { $('play').hidden = false; });
-    timer = setTimeout(() => void endSession('90秒の接続テストを終了しました。'), prep.max_session_seconds * 1000);
     check();
     void prefetchScribeToken();
     const start = await call('start', { control }); saveControl(start.control); check();
     log('session: ' + start.session_id + ' / model: ' + start.model);
+    sessionLimit = createSessionLimit({ seconds: prep.max_session_seconds, isBusy: () => busy,
+      onTick: remaining => { $('remaining').textContent = '残り ' + Math.floor(remaining / 60) + ':' + String(remaining % 60).padStart(2, '0'); },
+      onExpire: () => { clearTimeout(micTimer); void voiceInput?.stop().catch(() => {}); controls(); status('時間になりました。最後の返答が終わったら終了します。'); },
+      onEnd: () => void endSession('会話を終了しました。また話しかけてね。'),
+    });
     await new Promise((resolve, reject) => {
       if (sender.remoteParticipants.has('bithuman-avatar-agent')) return resolve();
       const timeout = setTimeout(() => { sender.off(RoomEvent.ParticipantConnected, joined); reject(new Error('avatar_join_timeout')); }, 30000);
@@ -206,18 +218,19 @@ $('start').onclick = async () => {
         audioEvent('mic_close_returned');
       } };
     } });
+    log('startup_greeting_requested_ms: ' + Math.round(performance.now() - sessionStartedAt) + ' ms');
     status('凪が挨拶しています。');
     const greeting = 'おはよう、ひろくーん。今日は何企んでるの？';
     appendTranscript('凪: ' + greeting);
     const greeted = await output.speak(greeting, { onSourceAudio: blob => { sourceAudioUrl = URL.createObjectURL(blob); } }); check();
     receivedCapture?.stop();
     if (!greeted?.ok) throw new Error('greeting_playback_failed');
-    connected = true; busy = false; attention.engage(); controls(); await listenAutomatically();
+    connected = true; busy = false; attention.engage(); controls(); sessionLimit?.finishTurn(); if (connected) await listenAutomatically();
   } catch (error) { log(error.message); await endSession('接続できませんでした: ' + error.message); }
   finally { launching = false; controls(); }
 };
 async function handleTranscript(event) {
-  if (!connected || muted || busy) return;
+  if (!connected || muted || busy || sessionLimit?.expired) return;
   if (!event.final) {
     if (attention.state === 'conversation') {
       attention.engage(); clearTimeout(micTimer);
@@ -234,11 +247,11 @@ async function handleTranscript(event) {
   appendTranscript('凪: ' + decision.text);
   const result = await output.speak(decision.text);
   if (!result.ok) { await endSession('呼びかけへの応答を再生できませんでした。'); return; }
-  busy = false; controls();
+  busy = false; controls(); sessionLimit?.finishTurn();
   if (connected) await listenAutomatically();
 }
 async function listenAutomatically() {
-  if (!connected || muted || busy || stopping || voiceInput?.active) return;
+  if (!connected || muted || busy || stopping || sessionLimit?.expired || voiceInput?.active) return;
   if (listenTask) return listenTask;
   const generation = sessionGeneration;
   micStarting = true; controls(); status('マイクを準備しています。');
@@ -248,7 +261,7 @@ async function listenAutomatically() {
   listenTask = (async () => {
     try {
       await voiceInput.start({ onTranscript: event => { void handleTranscript(event); }, onError: error => { log(String(error?.message || error)); void endSession('音声入力エラーのため終了しました。'); } });
-      if (!connected || stopping || muted || generation !== sessionGeneration) { await voiceInput.stop(); return; }
+      if (!connected || stopping || muted || sessionLimit?.expired || generation !== sessionGeneration) { await voiceInput.stop(); return; }
     } catch (error) {
       micStarting = false; muted = true; controls(); log(error.message);
       if (connected) status('マイクを再開してください。文字入力も使えます。');
@@ -291,3 +304,4 @@ try {
   const health = await call('health'); log('設定確認: OK / avatar: ' + health.agent_code);
   status('開始すると凪が挨拶し、自動で音声入力を開始します。'); controls();
 } catch (error) { status(error.message); log(error.message); }
+
