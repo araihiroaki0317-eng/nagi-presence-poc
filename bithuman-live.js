@@ -1,3 +1,4 @@
+import { monitorAvatarAudio } from './runtime/avatar-audio-stats.js';
 import { createLiveAttention } from './runtime/live-attention.js';
 import { Room, RoomEvent, Track } from 'https://esm.sh/livekit-client@2.22.3?bundle';
 import { Conversation, Scribe, RealtimeEvents, CommitStrategy } from 'https://esm.sh/@elevenlabs/client@latest?bundle';
@@ -26,7 +27,8 @@ $('latest').onclick = () => {
 const pendingKey = 'nagi.bithuman.pending-stop.v1';
 const attention = createLiveAttention();
 let muted = false, listenTask = null, sessionGeneration = 0;
-let audioBlocked = false;
+let audioBlocked = false, audioMonitor = null;
+const captureReceived = new URLSearchParams(location.search).get('capture') === '1';
 let audioAttachment, sessionStartedAt = 0;
 const audioEvent = name => { if (sessionStartedAt) log('audio_event +' + Math.round(performance.now() - sessionStartedAt) + ' ms: ' + name); };
 for (const name of ['playing', 'waiting', 'stalled', 'pause', 'emptied']) {
@@ -67,7 +69,7 @@ function saveControl(value) { control = value; if (value) localStorage.setItem(p
 async function endSession(message = '終了しました。') {
   if (launching) cancelLaunch = true;
   if (stopping) return;
-  audioAttachment?.close(); receivedCapture?.stop();
+  audioAttachment?.close(); receivedCapture?.stop(); audioMonitor?.stop();
   stopping = true; connected = false; sessionGeneration++; attention.idle(); micStarting = false; tokenPromise = null; clearTimeout(timer); clearTimeout(micTimer); controls();
   await voiceInput?.stop().catch(() => {});
   await adapter?.end().catch(() => {});
@@ -101,6 +103,8 @@ async function sendText(text) {
 }
 $('start').onclick = async () => {
   previewGeneration++;
+  audioMonitor?.stop();
+  log('audio_diagnostic_version: receive-stats-1 / recording: ' + captureReceived);
   receivedCapture?.stop(); receivedCapture = null;
   $('receivedAudio').pause(); $('receivedAudio').removeAttribute('src'); $('receivedPreview').hidden = true;
   if (receivedAudioUrl) URL.revokeObjectURL(receivedAudioUrl);
@@ -134,7 +138,10 @@ $('start').onclick = async () => {
       else if (track.kind === Track.Kind.Audio) {
         const audio = $('avatarAudio'); track.attach(audio);
         audio.muted = false; audio.volume = 1;
-        if (!receivedCapture) receivedCapture = captureRemoteGreeting(track.mediaStreamTrack, {
+        audioMonitor?.stop();
+        audioMonitor = monitorAvatarAudio(track, sample => audioEvent('receiver ' + JSON.stringify(sample)));
+        log('audio_element: rate=' + audio.playbackRate + ' / volume=' + audio.volume + ' / attached=' + track.attachedElements.length);
+        if (captureReceived && !receivedCapture) receivedCapture = captureRemoteGreeting(track.mediaStreamTrack, {
           onBlob: blob => {
             if (captureGeneration !== previewGeneration) return;
             receivedAudioUrl = URL.createObjectURL(blob);
