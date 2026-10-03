@@ -107,6 +107,35 @@ test('audio delivery preserves split PCM samples and waits for avatar playback',
   assert.deepEqual(Array.from(wav.slice(44)), chunks);
 });
 
+test('onset silence is inserted once per reply, preserves all PCM, and matches the source preview', async () => {
+  const handlers = {}, streams = [], timings = [];
+  const room = { registerRpcMethod: (name, fn) => { handlers[name] = fn; }, localParticipant: {
+    streamBytes: async () => {
+      const chunks = []; streams.push(chunks);
+      return { write: async bytes => chunks.push(...bytes), close: async () => handlers['lk.playback_finished']({ callerIdentity: 'bithuman-avatar-agent' }) };
+    },
+  } };
+  const output = createBithumanOutput({ room, endpoint: 'test', startupSilenceMs: 160, prebufferMs: 0,
+    onTiming: event => timings.push(event), fetchImpl: async () => new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(Uint8Array.of(1));
+        controller.enqueue(Uint8Array.of(2, 3, 4));
+        controller.enqueue(Uint8Array.of(5, 6));
+        controller.close();
+      },
+    })),
+  });
+  const expected = [...new Uint8Array(5120), 1, 2, 3, 4, 5, 6];
+  for (let i = 0; i < 2; i++) {
+    let preview;
+    assert.deepEqual(await output.speak('reply', { onSourceAudio: blob => { preview = blob; } }), { ok: true });
+    assert.deepEqual(streams[i], expected);
+    assert.deepEqual(Array.from(new Uint8Array(await preview.arrayBuffer()).slice(44)), expected);
+  }
+  assert.equal(timings.filter(x => x.stage === 'audio_startup_silence_ms').length, 2);
+  assert.equal(timings.find(x => x.stage === 'sent_audio_duration_ms').ms, 5126 / 32);
+});
+
 test('missing playback confirmation is an error, not success', async () => {
   const room = { registerRpcMethod() {}, localParticipant: { streamBytes: async () => ({ write: async () => {}, close: async () => {} }) } };
   const output = createBithumanOutput({ room, endpoint: 'https://tts.example', timeoutMs: 5, fetchImpl: async () => new Response(Uint8Array.of(1, 2)) });

@@ -1,5 +1,5 @@
 const AVATAR = 'bithuman-avatar-agent';
-export function createBithumanOutput({ room, endpoint, fetchImpl = fetch, timeoutMs = 60000, prebufferMs = 750, onTiming = () => {}, beforeSend = async () => {} }) {
+export function createBithumanOutput({ room, endpoint, fetchImpl = fetch, timeoutMs = 60000, prebufferMs = 750, startupSilenceMs = 0, onTiming = () => {}, beforeSend = async () => {} }) {
   let active = null;
   room.registerRpcMethod('lk.playback_started', async ({ callerIdentity }) => {
     if (callerIdentity === AVATAR && active) onTiming({ stage: 'avatar_playback_started_ms', ms: performance.now() - active.startedAt });
@@ -22,6 +22,9 @@ export function createBithumanOutput({ room, endpoint, fetchImpl = fetch, timeou
       const sourceChunks = [];
       let sourceBytes = 0;
       const sourceLimit = 16000 * 2 * 15; // Diagnostic preview: first 15 seconds only.
+      // Optional onset experiment: zero PCM, once per reply, in the same audio stream.
+      const silenceMs = Number.isFinite(startupSilenceMs) ? Math.min(1000, Math.max(0, startupSilenceMs)) : 0;
+      const silenceBytes = Math.round(silenceMs * 16) * 2;
       try {
         const response = await fetchImpl(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, output_format: 'pcm_16000' }), signal: controller.signal });
         if (!response.ok || !response.body) throw new Error('tts_http_' + response.status);
@@ -39,15 +42,21 @@ export function createBithumanOutput({ room, endpoint, fetchImpl = fetch, timeou
           if (controller.signal.aborted) throw new Error('speech_cancelled');
           const startedAt = performance.now();
           await writer.write(chunk);
+          if (onSourceAudio && sourceBytes < sourceLimit) {
+            const copy = chunk.slice(0, Math.min(chunk.length, sourceLimit - sourceBytes));
+            sourceChunks.push(copy); sourceBytes += copy.length;
+          }
           maxWriteWait = Math.max(maxWriteWait, performance.now() - startedAt);
           sent += chunk.length;
         };
         const flush = async () => {
           if (!buffered.length) return;
-          const initial = new Uint8Array(pendingBytes);
-          let offset = 0;
+          const prefixBytes = sent === 0 ? silenceBytes : 0;
+          const initial = new Uint8Array(prefixBytes + pendingBytes);
+          let offset = prefixBytes;
           for (const chunk of buffered) { initial.set(chunk, offset); offset += chunk.length; }
           buffered = []; pendingBytes = 0;
+          if (prefixBytes) onTiming({ stage: 'audio_startup_silence_ms', ms: prefixBytes / 32 });
           onTiming({ stage: 'audio_prebuffer_ready_ms', ms: performance.now() - current.startedAt });
           await write(initial);
         };
@@ -63,10 +72,6 @@ export function createBithumanOutput({ room, endpoint, fetchImpl = fetch, timeou
           if (length && !bytes) onTiming({ stage: 'tts_first_pcm_ms', ms: performance.now() - current.startedAt });
           if (length) {
             bytes += length;
-            if (onSourceAudio && sourceBytes < sourceLimit) {
-              const copy = chunk.slice(0, Math.min(length, sourceLimit - sourceBytes));
-              sourceChunks.push(copy); sourceBytes += copy.length;
-            }
             const samples = chunk.subarray(0, length);
             if (!sent) {
               buffered.push(samples); pendingBytes += length;
@@ -80,6 +85,7 @@ export function createBithumanOutput({ room, endpoint, fetchImpl = fetch, timeou
         onTiming({ stage: 'tts_receive_max_wait_ms', ms: maxReceiveWait });
         onTiming({ stage: 'audio_send_max_wait_ms', ms: maxWriteWait });
         onTiming({ stage: 'reply_audio_duration_ms', ms: bytes / 32 });
+        onTiming({ stage: 'sent_audio_duration_ms', ms: sent / 32 });
         await writer.close();
         writer = null;
         if (!await done) throw new Error('playback_not_confirmed');
