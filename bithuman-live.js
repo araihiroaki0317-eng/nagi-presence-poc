@@ -28,6 +28,7 @@ const pendingKey = 'nagi.bithuman.pending-stop.v1';
 const attention = createLiveAttention();
 let muted = false, listenTask = null, sessionGeneration = 0;
 let audioBlocked = false, audioMonitor = null;
+const startupSilenceMs = new URLSearchParams(location.search).get('onset') === '0' ? 0 : 160;
 const captureReceived = new URLSearchParams(location.search).get('capture') === '1';
 let audioAttachment, sessionStartedAt = 0;
 const audioEvent = name => { if (sessionStartedAt) log('audio_event +' + Math.round(performance.now() - sessionStartedAt) + ' ms: ' + name); };
@@ -104,7 +105,7 @@ async function sendText(text) {
 $('start').onclick = async () => {
   previewGeneration++;
   audioMonitor?.stop();
-  log('audio_diagnostic_version: receive-stats-1 / recording: ' + captureReceived);
+  log('audio_diagnostic_version: onset-silence-1 / recording: ' + captureReceived + ' / startup_silence_ms: ' + startupSilenceMs);
   receivedCapture?.stop(); receivedCapture = null;
   $('receivedAudio').pause(); $('receivedAudio').removeAttribute('src'); $('receivedPreview').hidden = true;
   if (receivedAudioUrl) URL.revokeObjectURL(receivedAudioUrl);
@@ -130,7 +131,7 @@ $('start').onclick = async () => {
     await call('verify'); check();
     const prep = await call('prepare', {}); saveControl(prep.control); controls(); check();
     await audioUnlock; check();
-    output = createBithumanOutput({ room: sender, endpoint: W + '/tts', onTiming: timing, beforeSend: signal => sessionAudioAttachment.wait(signal) });
+    output = createBithumanOutput({ room: sender, endpoint: W + '/tts', startupSilenceMs, onTiming: timing, beforeSend: signal => sessionAudioAttachment.wait(signal) });
     viewer.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
       log('受信トラック: ' + participant.identity + ' / ' + track.kind);
       if (!['bithuman-avatar-agent', 'nagi-audio-sender'].includes(participant.identity)) return;
