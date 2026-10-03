@@ -143,6 +143,7 @@ export class ElevenLabsConversationAdapter {
           thread_id: this.memoryConfig.threadId,
           top_k: 5,
           threshold: 0.1,
+          ...(this.memoryConfig.deferLearning === true ? { defer_learning: true } : {}),
         }),
       });
       let payload = null;
@@ -154,6 +155,9 @@ export class ElevenLabsConversationAdapter {
         throw error;
       }
       callbacks.onTiming?.({ stage: 'memory_response_ms', ms: performance.now() - responseStartedAt });
+      for (const stage of ['context_ms', 'llm_ms', 'memory_write_wait_ms']) {
+        if (Number.isFinite(payload?.timings?.[stage])) callbacks.onTiming?.({ stage: 'memory_' + stage, ms: payload.timings[stage] });
+      }
       const reply = String(payload?.response || '').trim();
       if (!reply) throw new Error('memory_response_missing');
       if (this.session !== session) return;

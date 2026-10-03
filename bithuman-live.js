@@ -175,7 +175,7 @@ $('start').onclick = async () => {
       sender.on(RoomEvent.ParticipantConnected, joined);
     });
     check();
-    adapter = new ElevenLabsConversationAdapter({ Conversation, agentId: 'agent_8501m0nvtj12ea5vnc21ck26v9sp', memoryConfig: { enabled: true, endpoint: 'https://nagi-memory-adapter.arai-hiroaki0317.workers.dev', userId: 'hiro', threadId: 'nagi-poc-002' }, ttsOutput: output });
+    adapter = new ElevenLabsConversationAdapter({ Conversation, agentId: 'agent_8501m0nvtj12ea5vnc21ck26v9sp', memoryConfig: { deferLearning: true, enabled: true, endpoint: 'https://nagi-memory-adapter.arai-hiroaki0317.workers.dev', userId: 'hiro', threadId: 'nagi-poc-002' }, ttsOutput: output });
     await adapter.start(CONVERSATION_PROFILES.TEXT_AUDIO, {
       onTiming: timing,
       onMessage: event => { if (event.source === 'ai') appendTranscript('凪: ' + event.message); },

@@ -164,3 +164,23 @@ test('memory backend request failure is surfaced through callbacks without rejec
   assert.deepEqual(modes, ['listening']);
   assert.deepEqual(statuses, ['processing', 'error']);
 });
+test('voice memory opt-in and component timings survive pending learning', async () => {
+  let body; const timings = []; const spoken = [];
+  const adapter = new ElevenLabsConversationAdapter({
+    Conversation: { startSession() { throw new Error('unexpected'); } }, agentId: 'test',
+    memoryConfig: { enabled: true, endpoint: 'https://memory.example', userId: 'hiro', threadId: 'thread', deferLearning: true },
+    fetchImpl: async (_, options) => {
+      body = JSON.parse(options.body);
+      return new Response(JSON.stringify({ response: '覚えているよ', memory_learning: { ok: null, status: 'pending' },
+        timings: { context_ms: 100, llm_ms: 200, memory_write_wait_ms: 30 } }));
+    },
+    ttsOutput: { speak: async text => { spoken.push(text); return { ok: true }; } },
+  });
+  await adapter.start(CONVERSATION_PROFILES.TEXT_AUDIO, { onTiming: event => timings.push(event) });
+  await adapter.sendText('覚えてる？');
+  assert.equal(body.defer_learning, true);
+  assert.deepEqual(spoken, ['覚えているよ']);
+  assert.deepEqual(timings.slice(1), [
+    { stage: 'memory_context_ms', ms: 100 }, { stage: 'memory_llm_ms', ms: 200 }, { stage: 'memory_memory_write_wait_ms', ms: 30 },
+  ]);
+});
