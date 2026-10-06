@@ -53,3 +53,9 @@ Official sources checked 2026-10-04: https://docs.bithuman.ai/pricing ; https://
 - [ ] Account billing/usage review completed or explicitly accepted as an unresolved budget limitation.
 - [ ] Release label and version tag created only after acceptance.
 
+
+## 2026-10-06 final turn-taking adjustment
+
+User device report: conversation is otherwise good; short hesitation still causes premature response. Increase Scribe VAD silence commit threshold from 1.0 to 1.5 seconds. This deliberately adds about 0.5 seconds at the speech boundary; it does not change Memory, TTS, playback, the 12-second wake/idle timeout or the avatar. Longer pauses may still end a turn. Official reference: https://elevenlabs.io/docs/eleven-api/guides/how-to/speech-to-text/realtime/transcripts-and-commit-strategies .
+
+User proposes releasing personal Web ver1 after this fix. Final hesitation acceptance is pending; do not mark all M3 checks passed from this report. Current body sway is deferred as a known limitation. Vendor reply received Oct 6 09:59 JST (message 1a10eb91f6a0e85f): vendor reports a quality bug, offers free regeneration and refund of original generation credits; newer model generation takes 10–20 seconds. No direct emotion/gesture controls. Current avatar preservation/overwrite behavior and precise sway/smile outcome remain unanswered. No regeneration or overwrite performed.
