@@ -7,10 +7,10 @@ Decision: 2026-10-04 JST. User agreed ver1 is a Web app opened explicitly for pe
 | Milestone | Acceptance | State |
 |---|---|---|
 | M0 avatar integration PoC | Nagi image, user speech, Memory/LLM, ElevenLabs voice, lip sync | Passed by device reports; body sway/expression remain known issues |
-| M1 ver1 scope and baseline | Preserve accepted voice and synchronous memory, document bounded session/costs | This PR |
-| M2 Web release candidate | 5-minute session, bounded reply grace, visible remaining time, fixed avatar and scrolling transcript, explicit stop/retry, startup diagnostics | This PR; deployment pending |
-| M3 device acceptance | Two 5-minute conversations; automatic ending after reply; stop/restart; text input; next-session recall of a harmless fact; no recurring onset repetition/stall | Human Gate; not yet tested |
-| M4 ver1 release | Record M3 outcomes and known limits; complete account cost review; remove candidate label and create immutable version tag | Not released |
+| M1 ver1 scope and baseline | Preserve accepted voice and synchronous memory, document bounded session/costs | Completed |
+| M2 Web release candidate | 5-minute session, bounded reply grace, visible remaining time, fixed avatar and scrolling transcript, explicit stop/retry, startup diagnostics | Deployed in PR #45; final adjustment deployed in PR #46 |
+| M3 device acceptance | Two 5-minute conversations; automatic ending after reply; stop/restart; text input; next-session recall of a harmless fact; no recurring onset repetition/stall | User accepted latest device experience Oct 7: 大丈夫そうだね. Individual checklist items not all separately reported |
+| M4 ver1 release | Record M3 outcomes and known limits; complete account cost review; remove candidate label and create immutable version tag | Personal Web ver1 approved Oct 7; release metadata publication in this change |
 
 No new feature work outside this contract before release. Five minutes is the initial bounded-session policy, not a vendor limit. On expiration stop accepting input; allow current work up to 60 seconds, then force cleanup. A hung reply may therefore be cut at the hard deadline. Manual stop and leaving the screen are immediate.
 
@@ -58,4 +58,12 @@ Official sources checked 2026-10-04: https://docs.bithuman.ai/pricing ; https://
 
 User device report: conversation is otherwise good; short hesitation still causes premature response. Increase Scribe VAD silence commit threshold from 1.0 to 1.5 seconds. This deliberately adds about 0.5 seconds at the speech boundary; it does not change Memory, TTS, playback, the 12-second wake/idle timeout or the avatar. Longer pauses may still end a turn. Official reference: https://elevenlabs.io/docs/eleven-api/guides/how-to/speech-to-text/realtime/transcripts-and-commit-strategies .
 
-User proposes releasing personal Web ver1 after this fix. Final hesitation acceptance is pending; do not mark all M3 checks passed from this report. Current body sway is deferred as a known limitation. Vendor reply received Oct 6 09:59 JST (message 1a10eb91f6a0e85f): vendor reports a quality bug, offers free regeneration and refund of original generation credits; newer model generation takes 10–20 seconds. No direct emotion/gesture controls. Current avatar preservation/overwrite behavior and precise sway/smile outcome remain unanswered. No regeneration or overwrite performed.
+User proposes releasing personal Web ver1 after this fix. Final hesitation acceptance received Oct 7: 大丈夫そうだね. Do not infer separate results for every M3 item. Current body sway is deferred as a known limitation. Vendor reply received Oct 6 09:59 JST (message 1a10eb91f6a0e85f): vendor reports a quality bug, offers free regeneration and refund of original generation credits; newer model generation takes 10–20 seconds. No direct emotion/gesture controls. Current avatar preservation/overwrite behavior and precise sway/smile outcome remain unanswered. No regeneration or overwrite performed.
+
+## ver1.0.0 personal release — 2026-10-07 JST
+
+Release decision: user proposed shipping after the hesitation fix on Oct 6 and accepted the result Oct 7. Freeze the functional baseline at PR #46 merge 2f9aebebaa3f5373714fc8cb7a47f9b000c8876b; this release change updates only UI version/cache URL and documentation. Current appearance remains usable with body sway deferred to vendor follow-up. No avatar replacement or paid operation.
+
+Acceptance is based on user device reports, not fabricated test measurements. The earlier exhaustive M3 checklist and account cost review are not fully evidenced: two timed five-minute runs, individual stop/restart/text/recall checks, the <=15s startup target and account-specific total costs remain verification debt. This personal release decision supersedes treating that entire checklist as a blocking gate; do not claim those items passed or that the budget was explicitly accepted. Existing bounded sessions and published usage caveats continue. Before broader distribution or increasing session limits, resolve access and budget review.
+
+Next: follow up on preserving the current avatar during free vendor regeneration; then scope resident presence separately. Multi-party conversation and VR remain later milestones.
