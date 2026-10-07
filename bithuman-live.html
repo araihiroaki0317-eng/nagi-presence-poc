@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>凪 — Web版 ver1候補</title>
+<title>凪 — Web版 ver1</title>
 <style>
 *{box-sizing:border-box}
 body{margin:0;background:#101719;color:#ecf3f0;font-family:system-ui}
@@ -35,7 +35,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
  #composer{grid-column:2;grid-row:6}
 }
 </style>
-</head><body><main><h1>凪 <small style="font-size:12px;color:#9bada7">Web版 · ver1候補</small> <span id="remaining" aria-live="off" style="font-size:13px;color:#9bada7;float:right"></span></h1>
+</head><body><main><h1>凪 <small style="font-size:12px;color:#9bada7">Web版 · ver1</small> <span id="remaining" aria-live="off" style="font-size:13px;color:#9bada7;float:right"></span></h1>
 <video id="avatar" autoplay playsinline muted></video><audio id="avatarAudio" autoplay playsinline></audio>
 <p id="status">接続設定を確認しています。</p>
 <div id="session-controls" class="row"><button id="start" disabled>会話を開始</button><button id="mic" disabled>マイクをミュート</button><button id="stop" disabled>終了</button><button id="play" hidden>音声を再生</button></div>
@@ -49,5 +49,5 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
 <div id="transcript" role="log" aria-label="凪との会話" aria-live="polite" aria-relevant="additions" tabindex="0"></div>
 <button id="latest" hidden>最新の会話へ ↓</button>
 <form id="composer" class="row"><input id="text" aria-label="凪へのメッセージ" placeholder="文字でも話せます" maxlength="1000" disabled><button id="send" disabled>送信</button></form>
-</main><script type="module" src="./bithuman-live.js"></script></body></html>
+</main><script type="module" src="./bithuman-live.js?v=1.0.0"></script></body></html>
 
