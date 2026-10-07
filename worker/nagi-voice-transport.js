@@ -8,6 +8,7 @@ export function agentVoiceSettings(agent) {
   return Object.keys(settings).length ? { voice_settings: settings } : {};
 }
 
+import { readNagiVoiceConfiguration } from '../runtime/nagi-voice-configuration.js';
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import { createSpeechEngineTransport } from '../runtime/speech-engine-transport.js';
 import { verifySpeechEngineJwt } from '../runtime/speech-engine-auth.js';
@@ -44,6 +45,10 @@ export function pcm16ToWav(pcm, sampleRate = 16000) {
 }
 
 export class ObservabilityEntrypoint extends WorkerEntrypoint {
+  async getNagiVoiceConfiguration() {
+    return readNagiVoiceConfiguration(this.env);
+  }
+
   async getElevenLabsUsage({ startTime, endTime, intervalSeconds = 3600, timeZone = 'Asia/Tokyo' } = {}) {
     if (!this.env.ELEVENLABS_API_KEY) throw new Error('missing_elevenlabs_secret');
     if (!Number.isInteger(startTime) || !Number.isInteger(endTime) || startTime >= endTime) throw new Error('invalid_usage_window');
