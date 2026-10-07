@@ -11,7 +11,14 @@
 - Conventional-config experiment did not resolve Cloudflare build failure and was reverted.
 - PR48/PR53 are not merged. Runtime ElevenLabs voice settings have not been retrieved.
 
-## Existing connection repair
+## Confirmed build failure and preview command repair
+- User-provided logs for builds faedbeb4 and 9aafe64a show `npx wrangler preview` failing because the configuration lacks a `previews` block. This is distinct from the diagnostic API HTTP 401.
+- User reports saving the preview command as `npx wrangler versions upload --config wrangler.voice.toml`. Saved settings have not yet been independently verified.
+- Retrying the old f2476d2 build at 2026-10-07 17:26 JST still executed the old command. Do not retry that historical build again; create a new branch commit and inspect its build command/result.
+- Keep production command `npx wrangler deploy --config wrangler.voice.toml` unchanged. Versions upload saves an inactive version; it does not promote production.
+- This documentation update triggers a fresh branch build to test the reported saved settings. Success is not assumed.
+
+## Separate read connection repair (not required to fix missing previews)
 1. Open https://dash.cloudflare.com/profile/api-tokens .
 2. Identify the token already stored in nagi-presence-poc GitHub Actions. Its Cloudflare display name/ID is NOT confirmed; do not edit a random token.
 3. If identified and editable, retain its existing permissions and add Account / Workers CI / Read. Retain Pages Read. Limit account resources to the existing account b8fc149cb501e6297066434b93734b55. This is read access, not deployment or billing access.
