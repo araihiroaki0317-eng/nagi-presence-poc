@@ -3,43 +3,36 @@
 <title>凪 — Web版 ver1</title>
 <style>
 *{box-sizing:border-box}
-html,body{height:100%;overflow:hidden}
 body{margin:0;background:#101719;color:#ecf3f0;font-family:system-ui}
-main{max-width:760px;margin:auto;height:100svh;height:100dvh;padding:12px;padding-top:max(12px,env(safe-area-inset-top));padding-bottom:max(12px,env(safe-area-inset-bottom));padding-left:max(12px,env(safe-area-inset-left));padding-right:max(12px,env(safe-area-inset-right));display:flex;flex-direction:column;gap:8px;overflow:hidden}
-main>*{min-width:0}
-h1{font-size:18px;margin:0;flex-shrink:0}
-video{display:block;width:100%;height:clamp(110px,30dvh,360px);flex-shrink:0;object-fit:contain;background:#080d0e;border-radius:16px}
-audio:not([controls]){display:none}
-.row{display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0}
-button,input{font:inherit;font-size:16px;min-height:44px;padding:10px;border-radius:9px;border:1px solid #647972}
-button{background:#c6ddd3;color:#14231e;cursor:pointer;touch-action:manipulation}
+main{max-width:760px;margin:auto;height:100svh;height:100dvh;padding:12px;padding-top:max(12px,env(safe-area-inset-top));padding-bottom:max(12px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px;overflow:hidden}
+h1{font-size:18px;margin:0}
+video{display:block;width:100%;height:clamp(110px,32dvh,360px);flex-shrink:0;object-fit:contain;background:#080d0e;border-radius:16px}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+button,input{font:inherit;padding:10px;border-radius:9px;border:1px solid #647972}
+button{background:#c6ddd3;color:#14231e;cursor:pointer}
 button:disabled{opacity:.4}
 input{flex:1;min-width:0;width:100px}
 p{line-height:1.5;margin:6px 0}
-#status{color:#c6ddd3;margin:0;max-height:3em;overflow:auto;font-size:14px;flex-shrink:0}
-#transcript{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;overflow-wrap:anywhere;white-space:pre-wrap;line-height:1.7;padding:12px;background:#080d0e;border:1px solid #334943;border-radius:12px;scrollbar-gutter:stable;-webkit-overflow-scrolling:touch}
+#status{color:#c6ddd3;margin:0;max-height:3em;overflow:auto;font-size:14px}
+#transcript{flex:1;min-height:70px;overflow-y:auto;overscroll-behavior:contain;overflow-wrap:anywhere;white-space:pre-wrap;line-height:1.7;padding:12px;background:#080d0e;border:1px solid #334943;border-radius:12px;scrollbar-gutter:stable}
 #transcript:empty::before{content:"会話はここに表示されます。";color:#9bada7}
 #transcript:focus-visible{outline:2px solid #c6ddd3}
 details{font-size:13px;flex-shrink:0}
 details>div{max-height:18dvh;overflow:auto;overscroll-behavior:contain}
-summary{cursor:pointer;min-height:32px;display:list-item;padding:6px 0}
+summary{cursor:pointer}
 pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
-#latest{align-self:center;padding:5px 12px;font-size:13px;flex-shrink:0}
+#latest{align-self:center;padding:5px 12px;font-size:13px}
 #composer{flex-wrap:nowrap}
-@media(min-width:700px),(max-height:540px) and (orientation:landscape){
- main{max-width:1200px;display:grid;grid-template-columns:minmax(160px,42%) minmax(0,1fr);grid-template-rows:auto auto auto minmax(0,1fr) auto auto;gap:10px}
+@media(max-height:540px) and (orientation:landscape){
+ main{max-width:1100px;display:grid;grid-template-columns:minmax(160px,40%) minmax(0,1fr);grid-template-rows:auto auto auto minmax(60px,1fr) auto auto}
  h1{grid-column:1;grid-row:1}
  video{grid-column:1;grid-row:2/7;height:100%;min-height:0}
  #status{grid-column:2;grid-row:1}
  #session-controls{grid-column:2;grid-row:2}
  #help{grid-column:2;grid-row:3}
- #transcript{grid-column:2;grid-row:4}
- #latest{grid-column:2;grid-row:5;justify-self:center}
+ #transcript{grid-column:2;grid-row:4;min-height:0}
+ #latest{grid-column:2;grid-row:5}
  #composer{grid-column:2;grid-row:6}
-}
-@media(max-width:699px) and (max-height:600px) and (orientation:portrait){
- video{height:clamp(80px,22dvh,130px)}
- main{gap:6px}
 }
 </style>
 </head><body><main><h1>凪 <small style="font-size:12px;color:#9bada7">Web版 · ver1</small> <span id="remaining" aria-live="off" style="font-size:13px;color:#9bada7;float:right"></span></h1>
