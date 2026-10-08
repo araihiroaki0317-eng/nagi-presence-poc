@@ -5,3 +5,9 @@ compatibility_date = "2026-09-26"
 
 [vars]
 NAGI_RESPOND_ENDPOINT = "https://nagi-memory-adapter.arai-hiroaki0317.workers.dev"
+
+# This trial intentionally reuses the existing memory adapter when a user starts
+# a conversation. Preview deployment itself does not call the adapter or TTS.
+# Secrets remain in Cloudflare; they are not inherited from production.
+[previews.vars]
+NAGI_RESPOND_ENDPOINT = "https://nagi-memory-adapter.arai-hiroaki0317.workers.dev"

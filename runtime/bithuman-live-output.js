@@ -1,5 +1,5 @@
 const AVATAR = 'bithuman-avatar-agent';
-export function createBithumanOutput({ room, endpoint, fetchImpl = fetch, timeoutMs = 60000, prebufferMs = 750, startupSilenceMs = 0, onTiming = () => {}, beforeSend = async () => {} }) {
+export function createBithumanOutput({ room, endpoint, fetchImpl = fetch, timeoutMs = 60000, prebufferMs = 750, startupSilenceMs = 0, voiceDelivery, onTiming = () => {}, beforeSend = async () => {} }) {
   let active = null;
   room.registerRpcMethod('lk.playback_started', async ({ callerIdentity }) => {
     if (callerIdentity === AVATAR && active) onTiming({ stage: 'avatar_playback_started_ms', ms: performance.now() - active.startedAt });
@@ -26,7 +26,7 @@ export function createBithumanOutput({ room, endpoint, fetchImpl = fetch, timeou
       const silenceMs = Number.isFinite(startupSilenceMs) ? Math.min(1000, Math.max(0, startupSilenceMs)) : 0;
       const silenceBytes = Math.round(silenceMs * 16) * 2;
       try {
-        const response = await fetchImpl(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, output_format: 'pcm_16000' }), signal: controller.signal });
+        const response = await fetchImpl(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, output_format: 'pcm_16000', ...(voiceDelivery === 'soft' ? { voice_delivery: 'soft' } : {}) }), signal: controller.signal });
         if (!response.ok || !response.body) throw new Error('tts_http_' + response.status);
         await beforeSend(controller.signal);
         if (controller.signal.aborted) throw new Error('speech_cancelled');
