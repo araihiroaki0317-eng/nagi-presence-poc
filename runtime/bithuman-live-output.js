@@ -26,7 +26,7 @@ export function createBithumanOutput({ room, endpoint, fetchImpl = fetch, timeou
       const silenceMs = Number.isFinite(startupSilenceMs) ? Math.min(1000, Math.max(0, startupSilenceMs)) : 0;
       const silenceBytes = Math.round(silenceMs * 16) * 2;
       try {
-        const response = await fetchImpl(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, output_format: 'pcm_16000', ...(voiceDelivery === 'soft' ? { voice_delivery: 'soft' } : {}) }), signal: controller.signal });
+        const response = await fetchImpl(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, output_format: 'pcm_16000', ...(['soft', 'steady'].includes(voiceDelivery) ? { voice_delivery: voiceDelivery } : {}) }), signal: controller.signal });
         if (!response.ok || !response.body) throw new Error('tts_http_' + response.status);
         await beforeSend(controller.signal);
         if (controller.signal.aborted) throw new Error('speech_cancelled');

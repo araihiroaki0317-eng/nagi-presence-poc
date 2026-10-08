@@ -8,7 +8,7 @@ export function agentVoiceSettings(agent) {
   return Object.keys(settings).length ? { voice_settings: settings } : {};
 }
 
-import { prepareVoiceText } from '../runtime/voice-delivery.js';
+import { prepareVoiceText, prepareVoiceSettings } from '../runtime/voice-delivery.js';
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import { createSpeechEngineTransport } from '../runtime/speech-engine-transport.js';
 import { verifySpeechEngineJwt } from '../runtime/speech-engine-auth.js';
@@ -295,7 +295,7 @@ export default {
       const speech = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/stream?output_format=${encodeURIComponent(input?.output_format === 'pcm_16000' ? 'pcm_16000' : input?.output_format === 'pcm_24000' ? 'pcm_24000' : 'mp3_44100_128')}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'xi-api-key': env.ELEVENLABS_API_KEY },
-        body: JSON.stringify({ text: prepareVoiceText(text, { delivery: input?.voice_delivery, modelId: agent?.conversation_config?.tts?.model_id || 'eleven_multilingual_v2' }), model_id: agent?.conversation_config?.tts?.model_id || 'eleven_multilingual_v2', ...agentVoiceSettings(agent) }),
+        body: JSON.stringify({ text: prepareVoiceText(text, { delivery: input?.voice_delivery, modelId: agent?.conversation_config?.tts?.model_id || 'eleven_multilingual_v2' }), model_id: agent?.conversation_config?.tts?.model_id || 'eleven_multilingual_v2', ...prepareVoiceSettings(agentVoiceSettings(agent), { delivery: input?.voice_delivery, modelId: agent?.conversation_config?.tts?.model_id }) }),
       });
       if (!speech.ok) return Response.json({ ok: false, error: 'tts_failed', status: speech.status }, { status: 502 });
       return new Response(speech.body, { status: 200, headers: { 'Content-Type': speech.headers.get('Content-Type') || 'audio/mpeg', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': allowedOrigin, 'Vary': 'Origin' } });
