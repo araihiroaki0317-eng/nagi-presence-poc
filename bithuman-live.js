@@ -50,7 +50,8 @@ function controls() {
   $('start').disabled = connected || busy || stopping || launching || Boolean(control);
   $('stop').disabled = !control || stopping;
   $('mic').textContent = muted ? 'マイクを再開' : 'マイクをミュート';
-  for (const id of ['mic', 'text', 'send']) $(id).disabled = !connected || busy || stopping || micStarting || sessionLimit?.expired;
+  $('text').disabled = busy || stopping || launching;
+  for (const id of ['mic', 'send']) $(id).disabled = !connected || busy || stopping || micStarting || sessionLimit?.expired;
 }
 function prefetchScribeToken() {
   if (!tokenPromise || Date.now() - tokenCreatedAt > 50000) {
