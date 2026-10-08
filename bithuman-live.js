@@ -8,7 +8,7 @@ import { RealtimeVoiceInput } from './runtime/voice-input.js';
 import { createBithumanOutput, createAudioAttachmentGate, captureRemoteGreeting } from './runtime/bithuman-live-output.js?v=1.0.2';
 // Experimental opt-in; ordinary ver1 sessions keep their accepted delivery.
 const requestedVoiceDelivery = new URLSearchParams(location.search).get('voice_delivery');
-const voiceDelivery = ['soft', 'steady'].includes(requestedVoiceDelivery) ? requestedVoiceDelivery : undefined;
+const voiceDelivery = requestedVoiceDelivery === 'baseline' ? undefined : ['soft', 'steady'].includes(requestedVoiceDelivery) ? requestedVoiceDelivery : 'steady';
 const W = 'https://nagi-voice-transport.arai-hiroaki0317.workers.dev';
 const $ = id => document.getElementById(id);
 function appendTranscript(text) {
