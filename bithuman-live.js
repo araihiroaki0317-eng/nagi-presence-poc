@@ -5,7 +5,7 @@ import { Room, RoomEvent, Track } from 'https://esm.sh/livekit-client@2.22.3?bun
 import { Conversation, Scribe, RealtimeEvents, CommitStrategy } from 'https://esm.sh/@elevenlabs/client@latest?bundle';
 import { ElevenLabsConversationAdapter, CONVERSATION_PROFILES } from './runtime/conversation-adapter.js';
 import { RealtimeVoiceInput } from './runtime/voice-input.js';
-import { createBithumanOutput, createAudioAttachmentGate, captureRemoteGreeting } from './runtime/bithuman-live-output.js';
+import { createBithumanOutput, createAudioAttachmentGate, captureRemoteGreeting } from './runtime/bithuman-live-output.js?v=1.0.1';
 // Experimental opt-in; ordinary ver1 sessions keep their accepted delivery.
 const voiceDelivery = new URLSearchParams(location.search).get('voice_delivery') === 'soft' ? 'soft' : undefined;
 const W = 'https://nagi-voice-transport.arai-hiroaki0317.workers.dev';
