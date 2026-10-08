@@ -6,6 +6,8 @@ import { Conversation, Scribe, RealtimeEvents, CommitStrategy } from 'https://es
 import { ElevenLabsConversationAdapter, CONVERSATION_PROFILES } from './runtime/conversation-adapter.js';
 import { RealtimeVoiceInput } from './runtime/voice-input.js';
 import { createBithumanOutput, createAudioAttachmentGate, captureRemoteGreeting } from './runtime/bithuman-live-output.js';
+// Experimental opt-in; ordinary ver1 sessions keep their accepted delivery.
+const voiceDelivery = new URLSearchParams(location.search).get('voice_delivery') === 'soft' ? 'soft' : undefined;
 const W = 'https://nagi-voice-transport.arai-hiroaki0317.workers.dev';
 const $ = id => document.getElementById(id);
 function appendTranscript(text) {
@@ -139,7 +141,7 @@ $('start').onclick = async () => {
     await call('verify'); check();
     const prep = await call('prepare', {}); saveControl(prep.control); controls(); check();
     await audioUnlock; check();
-    output = createBithumanOutput({ room: sender, endpoint: W + '/tts', startupSilenceMs, onTiming: timing, beforeSend: signal => sessionAudioAttachment.wait(signal) });
+    output = createBithumanOutput({ room: sender, endpoint: W + '/tts', startupSilenceMs, voiceDelivery, onTiming: timing, beforeSend: signal => sessionAudioAttachment.wait(signal) });
     viewer.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
       log('受信トラック: ' + participant.identity + ' / ' + track.kind);
       if (!['bithuman-avatar-agent', 'nagi-audio-sender'].includes(participant.identity)) return;
