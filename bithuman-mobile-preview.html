@@ -41,6 +41,14 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
  video{height:clamp(80px,22dvh,130px)}
  main{gap:6px}
 }
+main.visible-viewport{position:fixed;left:50%;transform:translateX(-50%);width:100%}
+main.compact-input{gap:4px;padding-top:8px;padding-bottom:8px}
+main.compact-input #help{display:none}
+main.compact-input #status{max-height:1.5em}
+main.compact-input #latest{min-height:32px}
+@media(max-width:699px) and (orientation:portrait){
+ main.compact-input video{height:clamp(60px,16vh,90px)}
+}
 </style>
 </head><body><main><h1>凪 <small style="font-size:12px;color:#9bada7">UI試用版</small> <span id="remaining" aria-live="off" style="font-size:13px;color:#9bada7;float:right"></span></h1>
 <video id="avatar" autoplay playsinline muted></video><audio id="avatarAudio" autoplay playsinline></audio>
@@ -56,5 +64,33 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
 <div id="transcript" role="log" aria-label="凪との会話" aria-live="polite" aria-relevant="additions" tabindex="0"></div>
 <button id="latest" hidden>最新の会話へ ↓</button>
 <form id="composer" class="row"><input id="text" aria-label="凪へのメッセージ" placeholder="文字でも話せます（送信は接続後）" maxlength="1000"><button id="send" disabled>送信</button></form>
-</main><script type="module" src="./bithuman-live.js?v=1.0.4"></script></body></html>
+</main><script type="module" src="./bithuman-live.js?v=1.0.4"></script><script>
+const viewport = window.visualViewport;
+const main = document.querySelector('main');
+function fitVisibleViewport() {
+  // Do not counteract pinch zoom: keep browser magnification accessible.
+  if (!viewport || Math.abs(viewport.scale - 1) > 0.01) {
+    main.style.removeProperty('height');
+    main.style.removeProperty('top');
+    main.classList.remove('visible-viewport', 'compact-input');
+    return;
+  }
+  main.classList.add('visible-viewport');
+  main.style.height = viewport.height + 'px';
+  main.style.top = viewport.offsetTop + 'px';
+  main.classList.toggle('compact-input', viewport.height < 500 && document.activeElement?.id === 'text');
+}
+let scheduled = false;
+function scheduleViewportFit() {
+  if (scheduled) return;
+  scheduled = true;
+  requestAnimationFrame(() => { scheduled = false; fitVisibleViewport(); });
+}
+viewport?.addEventListener('resize', scheduleViewportFit);
+viewport?.addEventListener('scroll', scheduleViewportFit);
+window.addEventListener('resize', scheduleViewportFit);
+document.addEventListener('focusin', scheduleViewportFit);
+document.addEventListener('focusout', scheduleViewportFit);
+fitVisibleViewport();
+</script></body></html>
 
