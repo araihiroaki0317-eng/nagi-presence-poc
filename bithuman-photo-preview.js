@@ -3,8 +3,8 @@ import { monitorAvatarAudio } from './runtime/avatar-audio-stats.js';
 import { createLiveAttention } from './runtime/live-attention.js';
 import { Room, RoomEvent, Track } from 'https://esm.sh/livekit-client@2.22.3?bundle';
 import { Conversation, Scribe, RealtimeEvents, CommitStrategy } from 'https://esm.sh/@elevenlabs/client@latest?bundle';
-import { ElevenLabsConversationAdapter, CONVERSATION_PROFILES } from './runtime/conversation-adapter.js?v=photo1';
-import { createPhotoComposer } from './runtime/photo-composer.js?v=photo1';
+import { ElevenLabsConversationAdapter, CONVERSATION_PROFILES } from './runtime/conversation-adapter.js?v=photo2';
+import { createPhotoComposer } from './runtime/photo-composer.js?v=photo2';
 import { RealtimeVoiceInput } from './runtime/voice-input.js';
 import { createBithumanOutput, createAudioAttachmentGate, captureRemoteGreeting } from './runtime/bithuman-live-output.js?v=1.0.2';
 // Experimental opt-in; ordinary ver1 sessions keep their accepted delivery.
@@ -47,12 +47,19 @@ let viewer, sender, adapter, output, voiceInput, control = '', connected = false
 const status = text => { $('status').textContent = text; };
 const log = text => { $('debug').textContent += text + '\n'; };
 const timing = ({ stage, ms }) => log(stage + ': ' + Math.round(ms) + ' ms');
+let resumeAfterPhoto = false;
 const photos = createPhotoComposer({
   onChange: () => controls(),
   onPick: async () => {
+    resumeAfterPhoto ||= connected && !muted;
     muted = true; clearTimeout(micTimer); attention.idle(); controls();
     await voiceInput?.stop();
     if (connected) status('写真について入力して送信してください。マイクはミュートです。');
+  },
+  onRemove: async () => {
+    if (!resumeAfterPhoto) return;
+    resumeAfterPhoto = false; muted = false; controls();
+    if (connected) { attention.engage(); await listenAutomatically(); }
   },
   onError: message => status(message),
 });
@@ -105,11 +112,12 @@ async function endSession(message = '終了しました。') {
     saveControl(''); status(message);
   } catch (error) { status('終了確認に失敗しました。「終了」で再試行してください。'); log(error.message); }
   $('avatarAudio').pause(); $('avatarAudio').srcObject = null; $('avatar').srcObject = null;
+  resumeAfterPhoto = false; photos.clear();
   stopping = false; busy = false; controls();
   if (sourceAudioUrl) { $('sourceAudio').src = sourceAudioUrl; $('sourcePreview').hidden = false; }
   if (receivedAudioUrl) { $('receivedAudio').src = receivedAudioUrl; $('receivedPreview').hidden = false; }
 }
-async function sendText(text, image = null) {
+async function sendText(text, image = photos.image) {
   if (!connected || busy || photos.preparing || sessionLimit?.expired || (!text.trim() && !image)) return;
   const query = text.trim() || 'この写真を見て、どう思う？';
   busy = true; clearTimeout(micTimer); controls();
@@ -120,9 +128,9 @@ async function sendText(text, image = null) {
     status('考えています。');
     const replyStartedAt = performance.now();
     const result = await adapter.sendText(query, { image });
-    if (result?.ok !== false) {
+    if (result?.ok === true) {
       $('text').value = '';
-      if (image) photos.clear();
+      if (image && resumeAfterPhoto) { resumeAfterPhoto = false; muted = false; }
     }
     log('応答完了まで: ' + ((performance.now() - replyStartedAt) / 1000).toFixed(1) + '秒（再生時間を含む）');
   } catch (error) { log(error.message); status('送信できませんでした。入力と写真は残しています。'); }
@@ -297,7 +305,7 @@ async function listenAutomatically() {
 }
 $('mic').onclick = async () => {
   if (!connected || busy || stopping || micStarting) return;
-  muted = !muted; clearTimeout(micTimer); controls();
+  resumeAfterPhoto = false; muted = !muted; clearTimeout(micTimer); controls();
   if (muted) { await voiceInput.stop(); attention.idle(); status('マイクはミュートです。'); }
   else { attention.engage(); await listenAutomatically(); }
 };
