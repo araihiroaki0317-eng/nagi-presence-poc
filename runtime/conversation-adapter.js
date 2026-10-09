@@ -118,15 +118,16 @@ export class ElevenLabsConversationAdapter {
     return this.session;
   }
 
-  sendText(text) {
+  sendText(text, { image = null } = {}) {
     const value = String(text || '').trim();
     if (!this.session) throw new Error('conversation_not_started');
     if (!value) throw new Error('message_required');
-    if (this.memoryMode) return this.sendMemoryText(value);
+    if (this.memoryMode) return this.sendMemoryText(value, image);
+    if (image) throw new Error('image_requires_memory_backend');
     this.session.sendUserMessage(value);
   }
 
-  async sendMemoryText(value) {
+  async sendMemoryText(value, image = null) {
     const callbacks = this.callbacks || {};
     const session = this.session;
     const responseStartedAt = performance.now();
@@ -143,6 +144,7 @@ export class ElevenLabsConversationAdapter {
           thread_id: this.memoryConfig.threadId,
           top_k: 5,
           threshold: 0.1,
+          ...(image ? { image } : {}),
           ...(this.memoryConfig.deferLearning === true ? { defer_learning: true } : {}),
         }),
       });
@@ -154,6 +156,7 @@ export class ElevenLabsConversationAdapter {
         error.payload = payload;
         throw error;
       }
+      if (image && payload?.image_received !== true) throw new Error('image_backend_not_ready');
       callbacks.onTiming?.({ stage: 'memory_response_ms', ms: performance.now() - responseStartedAt });
       for (const stage of ['context_ms', 'llm_ms', 'memory_write_wait_ms']) {
         if (Number.isFinite(payload?.timings?.[stage])) callbacks.onTiming?.({ stage: 'memory_' + stage, ms: payload.timings[stage] });
