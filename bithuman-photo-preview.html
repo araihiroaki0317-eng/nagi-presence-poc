@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>凪 — 写真入力試用版</title>
+<style>
+*{box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{margin:0;background:#101719;color:#ecf3f0;font-family:system-ui}
+main{max-width:760px;margin:auto;height:100svh;height:100dvh;padding:12px;padding-top:max(12px,env(safe-area-inset-top));padding-bottom:max(12px,env(safe-area-inset-bottom));padding-left:max(12px,env(safe-area-inset-left));padding-right:max(12px,env(safe-area-inset-right));display:flex;flex-direction:column;gap:8px;overflow:hidden}
+main>*{min-width:0}
+h1{font-size:18px;margin:0;flex-shrink:0}
+video{display:block;width:100%;height:clamp(110px,30dvh,360px);flex-shrink:0;object-fit:contain;background:#080d0e;border-radius:16px}
+audio:not([controls]){display:none}
+.row{display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0}
+button,input{font:inherit;font-size:16px;min-height:44px;padding:10px;border-radius:9px;border:1px solid #647972}
+button{background:#c6ddd3;color:#14231e;cursor:pointer;touch-action:manipulation}
+button:disabled{opacity:.4}
+input{flex:1;min-width:0;width:100px}
+p{line-height:1.5;margin:6px 0}
+#status{color:#c6ddd3;margin:0;max-height:3em;overflow:auto;font-size:14px;flex-shrink:0}
+#transcript{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;overflow-wrap:anywhere;white-space:pre-wrap;line-height:1.7;padding:12px;background:#080d0e;border:1px solid #334943;border-radius:12px;scrollbar-gutter:stable;-webkit-overflow-scrolling:touch}
+#transcript:empty::before{content:"会話はここに表示されます。";color:#9bada7}
+#transcript:focus-visible{outline:2px solid #c6ddd3}
+details{font-size:13px;flex-shrink:0}
+details>div{max-height:18dvh;overflow:auto;overscroll-behavior:contain}
+summary{cursor:pointer;min-height:32px;display:list-item;padding:6px 0}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
+#latest{align-self:center;padding:5px 12px;font-size:13px;flex-shrink:0}
+#composer{flex-wrap:nowrap}
+#composer-area{flex-shrink:0;min-width:0}
+#photo-preview{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px}
+#photo-preview[hidden]{display:none}
+#photo-thumbnail{width:48px;height:48px;object-fit:cover;border-radius:6px}
+#photo-message{flex:1}
+#photo-remove{font-size:13px}
+#photo-note{font-size:12px;color:#9bada7}
+main.compact-input #photo-note{display:none}
+@media(min-width:700px),(max-height:540px) and (orientation:landscape){
+ main{max-width:1200px;display:grid;grid-template-columns:minmax(160px,42%) minmax(0,1fr);grid-template-rows:auto auto auto minmax(0,1fr) auto auto;gap:10px}
+ h1{grid-column:1;grid-row:1}
+ video{grid-column:1;grid-row:2/7;height:100%;min-height:0}
+ #status{grid-column:2;grid-row:1}
+ #session-controls{grid-column:2;grid-row:2}
+ #help{grid-column:2;grid-row:3}
+ #transcript{grid-column:2;grid-row:4}
+ #latest{grid-column:2;grid-row:5;justify-self:center}
+ #composer-area{grid-column:2;grid-row:6}
+}
+@media(max-width:699px) and (max-height:600px) and (orientation:portrait){
+ video{height:clamp(80px,22dvh,130px)}
+ main{gap:6px}
+}
+main.visible-viewport{position:fixed;left:50%;transform:translateX(-50%);width:100%}
+main.compact-input{gap:4px;padding-top:8px;padding-bottom:8px}
+main.compact-input #help{display:none}
+main.compact-input #status{max-height:1.5em}
+main.compact-input #latest{min-height:32px}
+@media(max-width:699px) and (orientation:portrait){
+ main.compact-input video{height:clamp(60px,16vh,90px)}
+}
+</style>
+</head><body><main><h1>凪 <small style="font-size:12px;color:#9bada7">写真入力試用版</small> <span id="remaining" aria-live="off" style="font-size:13px;color:#9bada7;float:right"></span></h1>
+<video id="avatar" autoplay playsinline muted></video><audio id="avatarAudio" autoplay playsinline></audio>
+<p id="status">接続設定を確認しています。</p>
+<div id="session-controls" class="row"><button id="start" disabled>会話を開始</button><button id="mic" disabled>マイクをミュート</button><button id="stop" disabled>終了</button><button id="play" hidden>音声を再生</button></div>
+<details id="help"><summary>使い方・利用時間</summary><div>
+<p>1回5分の会話です。最後の返答を待って終了します（延長は最大1分）。終了後はまた開始できます。画面を離れると接続を終了します。</p>
+<p>接続中は無言でも利用枠を消費します。bitHumanは5分で20 credits（$0.20相当）、延長を含む6分で24 credits（起動準備中の課金時間は別途増える場合があります）。音声・LLM・通信などの費用は別です。</p>
+<p>挨拶の後はそのまま話せます。12秒間発話がなければ「凪」と単独で呼びかけて再開します。呼びかけ待ち中も音声認識は動作します。周囲の人の声との識別や、返答中の割り込みには未対応です。</p>
+<div id="sourcePreview" hidden><p>挨拶の元音声（アバターへ送った音声・最大15秒）。会話終了後に比較できます。ページを閉じると消えます。</p><audio id="sourceAudio" controls preload="none" style="width:100%"></audio></div>
+<div id="receivedPreview" hidden><p>挨拶の受信音声（端末で再収録・最大20秒）。冒頭に無音が入る場合があります。マイク音声は含みません。ページを閉じると消えます。</p><audio id="receivedAudio" controls preload="none" style="width:100%"></audio></div>
+<details><summary>接続情報</summary><button id="copyDebug" type="button">ログをコピー</button><pre id="debug"></pre></details></div></details>
+<div id="transcript" role="log" aria-label="凪との会話" aria-live="polite" aria-relevant="additions" tabindex="0"></div>
+<button id="latest" hidden>最新の会話へ ↓</button>
+<div id="composer-area"><div id="photo-preview" hidden><img id="photo-thumbnail" alt="送信前の写真"><span id="photo-message" aria-live="polite"></span><button id="photo-remove" type="button">外す</button></div><form id="composer" class="row"><button id="photo-pick" type="button" aria-label="写真を1枚添付">写真</button><input id="photo-file" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" hidden><input id="text" aria-label="凪へのメッセージ" placeholder="文字でも話せます（送信は接続後）" maxlength="1000"><button id="send" disabled>送信</button></form><p id="photo-note">写真は今回の返答に使います。再び見せるときは添付し直してください。写真の原本は会話履歴に保存しません。会話文は履歴に残ります。</p></div>
+</main><script type="module" src="./bithuman-photo-preview.js?v=photo1"></script><script>
+const viewport = window.visualViewport;
+const main = document.querySelector('main');
+function fitVisibleViewport() {
+  // Do not counteract pinch zoom: keep browser magnification accessible.
+  if (!viewport || Math.abs(viewport.scale - 1) > 0.01) {
+    main.style.removeProperty('height');
+    main.style.removeProperty('top');
+    main.classList.remove('visible-viewport', 'compact-input');
+    return;
+  }
+  main.classList.add('visible-viewport');
+  main.style.height = viewport.height + 'px';
+  main.style.top = viewport.offsetTop + 'px';
+  main.classList.toggle('compact-input', viewport.height < 500 && document.activeElement?.id === 'text');
+}
+let scheduled = false;
+function scheduleViewportFit() {
+  if (scheduled) return;
+  scheduled = true;
+  requestAnimationFrame(() => { scheduled = false; fitVisibleViewport(); });
+}
+viewport?.addEventListener('resize', scheduleViewportFit);
+viewport?.addEventListener('scroll', scheduleViewportFit);
+window.addEventListener('resize', scheduleViewportFit);
+document.addEventListener('focusin', scheduleViewportFit);
+document.addEventListener('focusout', scheduleViewportFit);
+fitVisibleViewport();
+</script></body></html>
+
+
