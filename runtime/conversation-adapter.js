@@ -156,6 +156,7 @@ export class ElevenLabsConversationAdapter {
         error.payload = payload;
         throw error;
       }
+      if (image && payload?.image_received !== true) throw new Error('image_backend_not_ready');
       callbacks.onTiming?.({ stage: 'memory_response_ms', ms: performance.now() - responseStartedAt });
       for (const stage of ['context_ms', 'llm_ms', 'memory_write_wait_ms']) {
         if (Number.isFinite(payload?.timings?.[stage])) callbacks.onTiming?.({ stage: 'memory_' + stage, ms: payload.timings[stage] });
