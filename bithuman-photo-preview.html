@@ -71,8 +71,8 @@ main.compact-input #latest{min-height:32px}
 <details><summary>接続情報</summary><button id="copyDebug" type="button">ログをコピー</button><pre id="debug"></pre></details></div></details>
 <div id="transcript" role="log" aria-label="凪との会話" aria-live="polite" aria-relevant="additions" tabindex="0"></div>
 <button id="latest" hidden>最新の会話へ ↓</button>
-<div id="composer-area"><div id="photo-preview" hidden><img id="photo-thumbnail" alt="送信前の写真"><span id="photo-message" aria-live="polite"></span><button id="photo-remove" type="button">外す</button></div><form id="composer" class="row"><button id="photo-pick" type="button" aria-label="写真を1枚添付">写真</button><input id="photo-file" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" hidden><input id="text" aria-label="凪へのメッセージ" placeholder="文字でも話せます（送信は接続後）" maxlength="1000"><button id="send" disabled>送信</button></form><p id="photo-note">写真は今回の返答に使います。再び見せるときは添付し直してください。写真の原本は会話履歴に保存しません。会話文は履歴に残ります。</p></div>
-</main><script type="module" src="./bithuman-photo-preview.js?v=photo1"></script><script>
+<div id="composer-area"><div id="photo-preview" hidden><img id="photo-thumbnail" alt="会話中の写真"><span id="photo-message" aria-live="polite"></span><button id="photo-remove" type="button">外す</button></div><form id="composer" class="row"><button id="photo-pick" type="button" aria-label="写真を1枚添付">写真</button><input id="photo-file" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" hidden><input id="text" aria-label="凪へのメッセージ" placeholder="文字でも話せます（送信は接続後）" maxlength="1000"><button id="send" disabled>送信</button></form><p id="photo-note">写真は「外す」か会話終了まで、文字・音声の返答で参照します。写真の原本は会話履歴に保存しません。会話文は履歴に残ります。</p></div>
+</main><script type="module" src="./bithuman-photo-preview.js?v=photo2"></script><script>
 const viewport = window.visualViewport;
 const main = document.querySelector('main');
 function fitVisibleViewport() {
