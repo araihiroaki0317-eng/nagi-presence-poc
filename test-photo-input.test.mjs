@@ -41,3 +41,24 @@ test('old backend must acknowledge a photo before any reply is shown or spoken',
   assert.equal(shown, false);
   assert.equal(spoken, false);
 });
+
+test('photo conversation keeps image across typed and voice turns and resumes paused mic', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { runInNewContext } = await import('node:vm');
+  const source = await readFile(new URL('./bithuman-photo-preview.js', import.meta.url), 'utf8');
+  const send = source.slice(source.indexOf('async function sendText('), source.indexOf("$('start').onclick"));
+  const image = { data_url: 'data:image/jpeg;base64,mock' };
+  const calls = [], elements = { text: { value: '写真について' } };
+  const context = { photos: { image, preparing: false, clear() { throw new Error('Photo must remain attached'); } }, connected: true, busy: false, muted: true, resumeAfterPhoto: true, micTimer: null, sessionLimit: { finishTurn() {} }, voiceInput: { async stop() {} }, adapter: { async sendText(query, options) { calls.push({ query, ...options }); return { ok: true }; } }, $: id => elements[id], controls() {}, clearTimeout() {}, appendTranscript() {}, prefetchScribeToken() {}, status() {}, log() {}, performance, attention: { engage() {} }, async listenAutomatically() { context.listens++; }, listens: 0 };
+  runInNewContext(send + ';this.sendText=sendText;', context);
+  await context.sendText('この写真どう？', image);
+  await context.sendText('右側はどう思う？'); // voice transcript uses the default attachment
+  await context.sendText('もう少し説明して', context.photos.image); // typed form
+  assert.equal(calls.length, 3);
+  assert.ok(calls.every(call => call.image === image));
+  assert.equal(context.muted, false);
+  assert.equal(context.listens, 3);
+  context.photos.image = null;
+  await context.sendText('別の話をしよう');
+  assert.equal(calls[3].image, null);
+});

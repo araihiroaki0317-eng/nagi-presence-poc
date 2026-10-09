@@ -42,7 +42,7 @@ export async function preparePhoto(file) {
   } finally { URL.revokeObjectURL(url); }
 }
 
-export function createPhotoComposer({ onChange, onPick, onError }) {
+export function createPhotoComposer({ onChange, onPick, onRemove, onError }) {
   const pick = document.getElementById('photo-pick');
   const input = document.getElementById('photo-file');
   const preview = document.getElementById('photo-preview');
@@ -54,14 +54,14 @@ export function createPhotoComposer({ onChange, onPick, onError }) {
     preview.hidden = !image && !preparing;
     thumbnail.hidden = !image;
     if (image) thumbnail.src = image.data_url; else thumbnail.removeAttribute('src');
-    message.textContent = preparing ? '写真を準備しています…' : '写真1枚 · 送信した返答で参照します';
+    message.textContent = preparing ? '写真を準備しています…' : '会話中の写真 · 外すまで参照します';
     pick.disabled = disabled || preparing;
     remove.disabled = disabled;
     onChange?.();
   };
   const clear = () => { generation++; preparing = false; image = null; input.value = ''; render(); };
   pick.onclick = () => input.click();
-  remove.onclick = clear;
+  remove.onclick = () => { clear(); void onRemove?.(); };
   input.onchange = async () => {
     const file = input.files?.[0];
     if (!file || disabled) return;
